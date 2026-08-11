@@ -256,7 +256,14 @@ export default function Room() {
           });
           if (fetchLb) fetchLeaderboard();
           if (fetchVotes) fetchVotingSummary();
-          if (type === 'chat_message') fetchMessages();
+          if (type === 'chat_message' && payload.payload.message) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === payload.payload.message.id)) return prev;
+              return [...prev, payload.payload.message];
+            });
+          } else if (type === 'chat_message') {
+            fetchMessages();
+          }
         }
       })
       .subscribe();
@@ -478,14 +485,15 @@ export default function Room() {
     try {
       const text = newMessageText.trim();
       setNewMessageText('');
-      const { error: rpcError } = await supabase.rpc('send_room_message', {
+      const { data: msgData, error: rpcError } = await supabase.rpc('send_room_message', {
         p_room_id: roomId,
         p_message: text,
       });
       if (rpcError) {
         console.error('[send_room_message]', rpcError);
       } else {
-        broadcastRoomAction({ type: 'chat_message' });
+        // Broadcast the full message object so all clients append it immediately
+        broadcastRoomAction({ type: 'chat_message', message: msgData });
       }
     } catch (err) {
       console.error('[send_room_message exception]', err);
