@@ -160,17 +160,63 @@ export default function Room() {
     };
   }, [roomId, user, loading, fetchLeaderboard]);
 
+  // Polling fallback to keep players synced if Realtime WebSocket drops or delays
+  useEffect(() => {
+    if (!roomId || !user || loading) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const { data: latestRoom } = await supabase
+          .from('rooms')
+          .select('id, code, host_id, status, current_round, accusation_data')
+          .eq('id', roomId)
+          .single();
+
+        if (latestRoom) {
+          setRoom((prev) => {
+            if (!prev) return latestRoom;
+            if (
+              prev.status !== latestRoom.status ||
+              prev.current_round !== latestRoom.current_round ||
+              JSON.stringify(prev.accusation_data) !== JSON.stringify(latestRoom.accusation_data)
+            ) {
+              return { ...prev, ...latestRoom };
+            }
+            return prev;
+          });
+        }
+
+        const { data: latestPlayers } = await supabase
+          .from('room_players')
+          .select('id, room_id, user_id, display_name, is_connected, role')
+          .eq('room_id', roomId);
+
+        if (latestPlayers && latestPlayers.length > 0) {
+          setPlayers(latestPlayers);
+        }
+      } catch (pollErr) {
+        console.error('[Room polling error]', pollErr);
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [roomId, user, loading]);
+
   // Fetch private role whenever room enters game state
   useEffect(() => {
     if (!roomId || !user || room?.status === 'waiting') return;
     let cancelled = false;
 
     const fetchMyRole = async () => {
-      const { data, error: roleError } = await supabase.rpc('get_my_role', {
-        p_room_id: roomId,
-      });
-      if (!cancelled && !roleError && data) {
-        setMyRole(data);
+      try {
+        const { data, error: roleError } = await supabase.rpc('get_my_role', {
+          p_room_id: roomId,
+        });
+        if (!cancelled && !roleError && data) {
+          setMyRole(data);
+        }
+      } catch (err) {
+        console.error('[fetchMyRole]', err);
       }
     };
 
@@ -183,10 +229,13 @@ export default function Room() {
     if (room?.status !== 'starting' || !room?.host_id || room.host_id !== user?.id) return;
 
     const timer = setTimeout(async () => {
-      await supabase.rpc('advance_room_status', {
+      const { error: rpcError } = await supabase.rpc('advance_room_status', {
         p_room_id: roomId,
         p_next_status: 'role_assignment',
       });
+      if (!rpcError) {
+        setRoom((prev) => (prev ? { ...prev, status: 'role_assignment' } : prev));
+      }
     }, 2500);
 
     return () => clearTimeout(timer);
@@ -197,40 +246,61 @@ export default function Room() {
     setStartError(null);
     setStartingGame(true);
 
-    const { error: rpcError } = await supabase.rpc('start_game', {
-      p_room_id: roomId,
-    });
+    try {
+      const { error: rpcError } = await supabase.rpc('start_game', {
+        p_room_id: roomId,
+      });
 
-    setStartingGame(false);
-
-    if (rpcError) {
-      const friendlyErrors = {
-        'Only the host can start the game': 'فقط المضيف يمكنه بدء اللعبة.',
-        'Room is not in waiting status': 'التحقيق بدأ بالفعل.',
-        'No connected players in room': 'لا يمكن بدء اللعبة بدون لاعبين متصلين.',
-      };
-      const matchedMsg = Object.keys(friendlyErrors).find((k) =>
-        rpcError.message?.includes(k)
-      );
-      setStartError(matchedMsg ? friendlyErrors[matchedMsg] : 'فشل بدء اللعبة. حاول مرة أخرى.');
-      console.error('[start_game]', rpcError);
-    } else {
-      setRoom((prev) => (prev ? { ...prev, status: 'starting' } : prev));
+      if (rpcError) {
+        const friendlyErrors = {
+          'Only the host can start the game': 'فقط المضيف يمكنه بدء اللعبة.',
+          'Room is not in waiting status': 'التحقيق بدأ بالفعل.',
+          'No connected players in room': 'لا يمكن بدء اللعبة بدون لاعبين متصلين.',
+        };
+        const matchedMsg = Object.keys(friendlyErrors).find((k) =>
+          rpcError.message?.includes(k)
+        );
+        setStartError(matchedMsg ? friendlyErrors[matchedMsg] : 'فشل بدء اللعبة. حاول مرة أخرى.');
+        console.error('[start_game]', rpcError);
+      } else {
+        setRoom((prev) => (prev ? { ...prev, status: 'starting' } : prev));
+      }
+    } catch (err) {
+      setStartError('حدث خطأ غير متوقع عند بدء اللعبة. حاول مرة أخرى.');
+      console.error('[start_game exception]', err);
+    } finally {
+      setStartingGame(false);
     }
   };
 
   const handleAdvanceToInvestigation = async () => {
-    await supabase.rpc('advance_room_status', {
-      p_room_id: roomId,
-      p_next_status: 'investigation',
-    });
+    setRoom((prev) => (prev ? { ...prev, status: 'investigation' } : prev));
+    try {
+      const { error: rpcError } = await supabase.rpc('advance_room_status', {
+        p_room_id: roomId,
+        p_next_status: 'investigation',
+      });
+      if (rpcError) {
+        console.error('[advance_room_status investigation]', rpcError);
+      }
+    } catch (err) {
+      console.error('[advance_room_status investigation exception]', err);
+    }
   };
 
   const handleAdvanceToAccusation = async () => {
-    await supabase.rpc('advance_room_status', {
-      p_room_id: roomId,
-      p_next_status: 'accusation',
-    });
+    setRoom((prev) => (prev ? { ...prev, status: 'accusation' } : prev));
+    try {
+      const { error: rpcError } = await supabase.rpc('advance_room_status', {
+        p_room_id: roomId,
+        p_next_status: 'accusation',
+      });
+      if (rpcError) {
+        console.error('[advance_room_status accusation]', rpcError);
+      }
+    } catch (err) {
+      console.error('[advance_room_status accusation exception]', err);
+    }
   };
 
   const toggleEvidenceSelection = (clueId) => {
@@ -244,22 +314,28 @@ export default function Room() {
     setAccusationError(null);
     setSubmittingAccusation(true);
 
-    const { data, error: rpcError } = await supabase.rpc('submit_accusation', {
-      p_room_id: roomId,
-      p_accused_user_id: selectedSuspect.user_id,
-      p_accused_name: selectedSuspect.display_name,
-      p_evidence_ids: selectedEvidence,
-    });
+    try {
+      const { data, error: rpcError } = await supabase.rpc('submit_accusation', {
+        p_room_id: roomId,
+        p_accused_user_id: selectedSuspect.user_id,
+        p_accused_name: selectedSuspect.display_name,
+        p_evidence_ids: selectedEvidence,
+      });
 
-    setSubmittingAccusation(false);
-    setShowConfirmModal(false);
+      setShowConfirmModal(false);
 
-    if (rpcError) {
-      setAccusationError('تعذّر تسجيل الاتهام. حاول مرة أخرى.');
-      console.error('[submit_accusation]', rpcError);
-    } else if (data) {
-      setRoom((prev) => (prev ? { ...prev, status: 'results', accusation_data: data } : prev));
-      fetchLeaderboard();
+      if (rpcError) {
+        setAccusationError('تعذّر تسجيل الاتهام. حاول مرة أخرى.');
+        console.error('[submit_accusation]', rpcError);
+      } else if (data) {
+        setRoom((prev) => (prev ? { ...prev, status: 'results', accusation_data: data } : prev));
+        fetchLeaderboard();
+      }
+    } catch (err) {
+      setAccusationError('حدث خطأ أثناء تسجيل الاتهام. حاول مرة أخرى.');
+      console.error('[submit_accusation exception]', err);
+    } finally {
+      setSubmittingAccusation(false);
     }
   };
 
@@ -267,17 +343,22 @@ export default function Room() {
     if (startingNextRound) return;
     setStartingNextRound(true);
 
-    const { error: rpcError } = await supabase.rpc('start_next_round', {
-      p_room_id: roomId,
-    });
+    try {
+      const { error: rpcError } = await supabase.rpc('start_next_round', {
+        p_room_id: roomId,
+      });
 
-    setStartingNextRound(false);
-
-    if (rpcError) {
-      console.error('[start_next_round]', rpcError);
-    } else {
-      setSelectedSuspect(null);
-      setSelectedEvidence([]);
+      if (rpcError) {
+        console.error('[start_next_round]', rpcError);
+      } else {
+        setSelectedSuspect(null);
+        setSelectedEvidence([]);
+        setRoom((prev) => (prev ? { ...prev, status: 'waiting', current_round: (prev.current_round || 1) + 1 } : prev));
+      }
+    } catch (err) {
+      console.error('[start_next_round exception]', err);
+    } finally {
+      setStartingNextRound(false);
     }
   };
 
@@ -285,20 +366,24 @@ export default function Room() {
     if (leaving) return;
     setLeaving(true);
 
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
+    try {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+
+      const { error: rpcError } = await supabase.rpc('leave_room', {
+        p_room_id: roomId,
+      });
+
+      if (rpcError) {
+        console.error('[leave_room]', rpcError);
+      }
+    } catch (err) {
+      console.error('[leave_room exception]', err);
+    } finally {
+      navigate('/');
     }
-
-    const { error: rpcError } = await supabase.rpc('leave_room', {
-      p_room_id: roomId,
-    });
-
-    if (rpcError) {
-      console.error('[leave_room]', rpcError);
-    }
-
-    navigate('/');
   };
 
   // — Render states —

@@ -25,13 +25,18 @@ export default function Home() {
 
     const fetchProfile = async () => {
       setProfileLoading(true);
-      const { data } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', user.id)
-        .single();
-      if (!cancelled && data) setProfile(data);
-      if (!cancelled) setProfileLoading(false);
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', user.id)
+          .single();
+        if (!cancelled && data) setProfile(data);
+      } catch (err) {
+        console.error('[fetchProfile]', err);
+      } finally {
+        if (!cancelled) setProfileLoading(false);
+      }
     };
 
     fetchProfile();
@@ -50,21 +55,26 @@ export default function Home() {
     setCreateError(null);
     setCreateLoading(true);
 
-    const code = generateCode();
-    const displayName = profile?.username || user?.email?.split('@')[0] || 'محقق';
+    try {
+      const code = generateCode();
+      const displayName = profile?.username || user?.email?.split('@')[0] || 'محقق';
 
-    const { data: roomId, error: rpcError } = await supabase.rpc('create_room', {
-      p_code: code,
-      p_display_name: displayName,
-    });
+      const { data: roomId, error: rpcError } = await supabase.rpc('create_room', {
+        p_code: code,
+        p_display_name: displayName,
+      });
 
-    setCreateLoading(false);
-
-    if (rpcError) {
-      setCreateError('تعذّر إنشاء الغرفة. حاول مرة أخرى.');
-      console.error('[create_room]', rpcError);
-    } else if (roomId) {
-      navigate(`/room/${roomId}`);
+      if (rpcError) {
+        setCreateError('تعذّر إنشاء الغرفة. حاول مرة أخرى.');
+        console.error('[create_room]', rpcError);
+      } else if (roomId) {
+        navigate(`/room/${roomId}`);
+      }
+    } catch (err) {
+      setCreateError('حدث خطأ غير متوقع. حاول مرة أخرى.');
+      console.error('[create_room exception]', err);
+    } finally {
+      setCreateLoading(false);
     }
   };
 
@@ -74,30 +84,35 @@ export default function Home() {
     setJoinError(null);
     setJoinLoading(true);
 
-    const code = roomCodeInput.trim().toUpperCase();
-    const displayName = profile?.username || user?.email?.split('@')[0] || 'محقق';
+    try {
+      const code = roomCodeInput.trim().toUpperCase();
+      const displayName = profile?.username || user?.email?.split('@')[0] || 'محقق';
 
-    const { data: roomId, error: rpcError } = await supabase.rpc('join_room', {
-      p_code: code,
-      p_display_name: displayName,
-    });
+      const { data: roomId, error: rpcError } = await supabase.rpc('join_room', {
+        p_code: code,
+        p_display_name: displayName,
+      });
 
-    setJoinLoading(false);
-
-    if (rpcError) {
-      const friendlyErrors = {
-        'Room not found': 'الغرفة غير موجودة. تحقق من الكود وحاول مرة أخرى.',
-        'Room is full': 'الغرفة ممتلئة.',
-        'Room is not open': 'هذه الغرفة لم تعد تقبل لاعبين.',
-        'Already in room': 'أنت بالفعل في هذه الغرفة.',
-      };
-      const msg = Object.keys(friendlyErrors).find((k) =>
-        rpcError.message?.includes(k)
-      );
-      setJoinError(msg ? friendlyErrors[msg] : 'فشل الانضمام للغرفة. تحقق من الكود وحاول مرة أخرى.');
-      console.error('[join_room]', rpcError);
-    } else if (roomId) {
-      navigate(`/room/${roomId}`);
+      if (rpcError) {
+        const friendlyErrors = {
+          'Room not found': 'الغرفة غير موجودة. تحقق من الكود وحاول مرة أخرى.',
+          'Room is full': 'الغرفة ممتلئة.',
+          'Room is not open': 'هذه الغرفة لم تعد تقبل لاعبين.',
+          'Already in room': 'أنت بالفعل في هذه الغرفة.',
+        };
+        const msg = Object.keys(friendlyErrors).find((k) =>
+          rpcError.message?.includes(k)
+        );
+        setJoinError(msg ? friendlyErrors[msg] : 'فشل الانضمام للغرفة. تحقق من الكود وحاول مرة أخرى.');
+        console.error('[join_room]', rpcError);
+      } else if (roomId) {
+        navigate(`/room/${roomId}`);
+      }
+    } catch (err) {
+      setJoinError('حدث خطأ غير متوقع أثناء الانضمام. حاول مرة أخرى.');
+      console.error('[join_room exception]', err);
+    } finally {
+      setJoinLoading(false);
     }
   };
 
