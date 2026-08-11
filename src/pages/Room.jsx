@@ -245,7 +245,7 @@ export default function Room() {
       )
       .on('broadcast', { event: 'room_action' }, (payload) => {
         if (payload?.payload) {
-          const { status, current_round, accusation_data, fetchLb, fetchVotes } = payload.payload;
+          const { status, current_round, accusation_data, fetchLb, fetchVotes, type } = payload.payload;
           setRoom((prev) => {
             if (!prev) return prev;
             const updated = { ...prev };
@@ -256,6 +256,7 @@ export default function Room() {
           });
           if (fetchLb) fetchLeaderboard();
           if (fetchVotes) fetchVotingSummary();
+          if (type === 'chat_message') fetchMessages();
         }
       })
       .subscribe();
@@ -268,7 +269,7 @@ export default function Room() {
         channelRef.current = null;
       }
     };
-  }, [roomId, user, loading, fetchLeaderboard, fetchVotingSummary]);
+  }, [roomId, user, loading, fetchLeaderboard, fetchMessages, fetchVotingSummary]);
 
   const broadcastRoomAction = (payload = {}) => {
     channelRef.current?.send({
@@ -1259,6 +1260,7 @@ export default function Room() {
                     <div className="empty-state"><p>لا توجد استجوابات متاحة في هذه القضية.</p></div>
                   )}
                 </div>
+              </div>
               )}
 
               {/* TAB 4: Build Case */}
