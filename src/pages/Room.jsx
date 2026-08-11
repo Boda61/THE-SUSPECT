@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { CASES } from '../data/cases';
+import SuspectHQ from '../components/SuspectHQ';
 
 export default function Room() {
   const { roomCode: roomId } = useParams();
@@ -59,6 +60,11 @@ export default function Room() {
   const [buildMotive, setBuildMotive] = useState('');
   const [buildOpportunity, setBuildOpportunity] = useState('');
   const [investigationTimeLeft, setInvestigationTimeLeft] = useState(null);
+
+  // Public Suspect HQ Data (For Detectives)
+  const [publicSuspectData, setPublicSuspectData] = useState({ alibi: null, defenses: [], interrogations: [] });
+  const [newQuestionText, setNewQuestionText] = useState('');
+  const [sendingQuestion, setSendingQuestion] = useState(false);
 
   const channelRef = useRef(null);
 
@@ -591,18 +597,68 @@ export default function Room() {
     } catch (err) {
       console.error('[get_investigation_progress]', err);
     }
-  }, [roomId, room]);
+  }, [roomId, room?.current_round]);
+
+  const fetchPublicSuspectData = useCallback(async () => {
+    if (!roomId || myRole === 'suspect') return;
+    try {
+      const { data } = await supabase.rpc('get_public_suspect_data', {
+        p_room_id: roomId,
+      });
+      if (data) setPublicSuspectData(data);
+    } catch (err) {
+      console.error('[get_public_suspect_data]', err);
+    }
+  }, [roomId, myRole]);
+
+  useEffect(() => {
+    if (!roomId || myRole === 'suspect') return;
+    const channel = supabase.channel(`public_hq:${roomId}`)
+      .on('broadcast', { event: 'room_action' }, (payload) => {
+        const type = payload?.payload?.type;
+        if (
+          type === 'suspect_public_update' || 
+          type === 'suspect_interrogation_answered' || 
+          type === 'interrogation_question'
+        ) {
+          fetchPublicSuspectData();
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [roomId, myRole, fetchPublicSuspectData]);
 
   // Sync investigation progress on investigation phase start
   useEffect(() => {
     if (room?.status === 'investigation') {
       const timer = setTimeout(() => {
         fetchInvestigationProgress();
+        fetchPublicSuspectData();
         setInvestigationTimeLeft(300);
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [room?.status, fetchInvestigationProgress]);
+  }, [room?.status, fetchInvestigationProgress, fetchPublicSuspectData]);
+
+  const handleAskQuestion = async () => {
+    if (!newQuestionText.trim() || sendingQuestion) return;
+    setSendingQuestion(true);
+    try {
+      const { error: rpcError } = await supabase.rpc('submit_interrogation_question', {
+        p_room_id: roomId,
+        p_question_text: newQuestionText.trim()
+      });
+      if (rpcError) throw rpcError;
+      setNewQuestionText('');
+      fetchPublicSuspectData();
+      broadcastRoomAction({ type: 'interrogation_question' });
+    } catch (err) {
+      console.error('[submit_interrogation_question]', err);
+      alert('فشل إرسال السؤال');
+    } finally {
+      setSendingQuestion(false);
+    }
+  };
 
   // Investigation timer countdown
   useEffect(() => {
@@ -951,6 +1007,9 @@ export default function Room() {
         {/* Phase: INVESTIGATION — Interactive Detective HQ */}
         {(room?.status === 'investigation' || room?.status === 'in_game') && activeCase && (
           <div className="lobby-body">
+            {myRole === 'suspect' ? (
+              <SuspectHQ roomId={roomId} currentRound={room?.current_round || 1} />
+            ) : (
             <div className="glass-card case-card">
               <div className="case-header">
                 <div>
@@ -1114,9 +1173,66 @@ export default function Room() {
 
               {/* TAB 3: Interrogation */}
               {activeTab === 'interrogation' && (
-                <div>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>راجع أقوال كل مشتبه به واضغط على أي تناقض لتسجيله.</p>
-                  {(activeCase.interrogations || []).map((interr) => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  
+                  {/* Live Suspect Interrogation (Real Player) */}
+                  <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid rgba(99,102,241,0.3)' }}>
+                    <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)' }}>
+                      <span>🚨</span> استجواب المشتبه به (اللاعب)
+                    </h3>
+                    
+                    {publicSuspectData?.alibi ? (
+                      <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: 'var(--radius-md)', marginBottom: '1rem' }}>
+                        <h4 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>عذر المشتبه به (Alibi):</h4>
+                        <p style={{ fontSize: '1rem', lineHeight: '1.5', fontStyle: 'italic' }}>"{publicSuspectData.alibi.text}"</p>
+                      </div>
+                    ) : (
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>لم يقم المشتبه به بنشر عذره بعد.</p>
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+                      <h4 style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>سجل الاستجوابات:</h4>
+                      {(publicSuspectData?.interrogations || []).length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>لم يتم توجيه أي أسئلة بعد.</p>
+                      ) : (
+                        publicSuspectData.interrogations.map(q => (
+                          <div key={q.id} style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: 'var(--radius-md)' }}>
+                            <p style={{ fontSize: '0.9rem', marginBottom: '0.4rem' }}><strong>سؤال:</strong> {q.question_text}</p>
+                            {q.is_answered ? (
+                              <p style={{ fontSize: '0.95rem', color: '#4ade80' }}><strong>رد المشتبه به:</strong> "{q.response_text}"</p>
+                            ) : (
+                              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>⏳ بانتظار رد المشتبه به...</p>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="وجه سؤالاً للمشتبه به (مثال: أين كنت وقت وقوع الجريمة؟)..."
+                        value={newQuestionText}
+                        onChange={(e) => setNewQuestionText(e.target.value)}
+                        disabled={sendingQuestion}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        className="btn btn-primary"
+                        onClick={handleAskQuestion}
+                        disabled={sendingQuestion || !newQuestionText.trim()}
+                      >
+                        {sendingQuestion ? 'جاري الإرسال...' : 'إرسال سؤال 📨'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Static Case Interrogations */}
+                  <div>
+                    <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--text-main)' }}>أقوال الشهود والمشتبه بهم الآخرين</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>راجع الأقوال واضغط على أي تناقض لتسجيله.</p>
+                    {(activeCase.interrogations || []).map((interr) => (
                     <div key={interr.suspect_id} className="glass-card" style={{ marginBottom: '1rem', padding: '1rem' }}>
                       <h4 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.65rem', color: 'var(--primary)' }}>👤 {interr.suspect_name}</h4>
                       {(interr.statements || []).map((stmt, idx) => (
@@ -1217,6 +1333,7 @@ export default function Room() {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
 
