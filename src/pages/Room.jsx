@@ -51,6 +51,7 @@ export default function Room() {
     made_connections: [],
     recorded_contradictions: [],
   });
+  const [inspectedLocation, setInspectedLocation] = useState(null);
   const [selectedBoardClues, setSelectedBoardClues] = useState([]);
   const [activePuzzle, setActivePuzzle] = useState(null);
   const [puzzleAnswerInput, setPuzzleAnswerInput] = useState('');
@@ -505,12 +506,16 @@ export default function Room() {
         p_evidence_ids: selectedEvidence,
       });
 
-      setShowConfirmModal(false);
-
       if (rpcError) {
-        setAccusationError('تعذّر تسجيل الاتهام. حاول مرة أخرى.');
+        const isNotHost = rpcError.message?.includes('Only the host');
+        setAccusationError(
+          isNotHost
+            ? 'فقط مضيف الغرفة (المحقق الرئيسي) يمكنه تأكيد الاتهام النهائي وإصدار الحكم.'
+            : 'تعذّر تسجيل الاتهام. حاول مرة أخرى.'
+        );
         console.error('[submit_accusation]', rpcError);
       } else if (data) {
+        setShowConfirmModal(false);
         setRoom((prev) => (prev ? { ...prev, status: 'results', accusation_data: data } : prev));
         broadcastRoomAction({ status: 'results', accusation_data: data, fetchLb: true });
         fetchLeaderboard();
@@ -612,7 +617,16 @@ export default function Room() {
   }, [room?.status, investigationTimeLeft]);
 
   const handleSearchLocation = async (loc) => {
-    if (investigationProgress.searched_locations?.includes(loc.id)) return;
+    // Open inspection modal immediately
+    setInspectedLocation(loc);
+
+    // Optimistically record searched location in UI
+    setInvestigationProgress((prev) => {
+      const currentLocs = prev.searched_locations || [];
+      if (currentLocs.includes(loc.id)) return prev;
+      return { ...prev, searched_locations: [...currentLocs, loc.id] };
+    });
+
     try {
       const { data } = await supabase.rpc('search_location', {
         p_room_id: roomId,
@@ -1533,30 +1547,98 @@ export default function Room() {
       {/* Confirmation Modal for Accusation */}
       {showConfirmModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div className="glass-card" style={{ maxWidth: '440px', width: '100%', textAlignment: 'center' }}>
+          <div className="glass-card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center' }}>
             <h3 style={{ fontSize: '1.35rem', marginBottom: '0.75rem' }}>⚖️ تأكيد الاتهام النهائي</h3>
             {accusationError && (
               <div className="error-message" role="alert" style={{ marginBottom: '1rem' }}>
                 {accusationError}
               </div>
             )}
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', marginBottom: '1.25rem' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', marginBottom: '1rem' }}>
               هل أنت متأكد من توجيه الاتهام رسمياً للاعب <strong style={{ color: 'var(--primary)' }}>{selectedSuspect?.display_name}</strong> بموجب الأدلة المختارة؟
             </p>
+
+            {!isHost && (
+              <div style={{ padding: '0.6rem 0.85rem', background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: 'var(--text-main)', marginBottom: '1.25rem', textAlign: 'right' }}>
+                👑 <strong>ملاحظة للمحققين:</strong> يمكنك تجهيز ملف الاتهام، ومضيف الغرفة (المحقق الرئيسي) هو المعني بتأكيد الاعتماد النهائي لإصدار الحكم.
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button
                 onClick={handleSubmitAccusation}
                 className="btn btn-primary"
-                disabled={submittingAccusation}
+                disabled={submittingAccusation || !isHost}
               >
-                {submittingAccusation ? 'جاري إصدار الحكم...' : 'نعم، أؤكد الاتهام'}
+                {submittingAccusation ? 'جاري إصدار الحكم...' : !isHost ? 'المضيف فقط يعتمد الاتهام 🔒' : 'نعم، أؤكد الاتهام'}
               </button>
               <button
-                onClick={() => setShowConfirmModal(false)}
+                onClick={() => { setShowConfirmModal(false); setAccusationError(null); }}
                 className="btn btn-secondary"
                 disabled={submittingAccusation}
               >
                 إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Inspection Results Modal */}
+      {inspectedLocation && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="glass-card" style={{ maxWidth: '480px', width: '100%', border: '1px solid #4ade8050' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.6rem' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.5rem' }}>{inspectedLocation.icon}</span>
+                <span>نتيجة تفتيش {inspectedLocation.name}</span>
+              </h3>
+              <button onClick={() => setInspectedLocation(null)} className="btn btn-ghost btn-sm">✖</button>
+            </div>
+
+            <p style={{ color: '#4ade80', fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.85rem' }}>
+              ✅ تم تفتيش المكان بنجاح! إليك الأدلة المعثور عليها:
+            </p>
+
+            <div className="clue-list" style={{ marginBottom: '1.25rem' }}>
+              {(activeCase?.clues || [])
+                .filter((c) => c.location_id === inspectedLocation.id)
+                .map((clue, idx) => (
+                  <div key={clue.id || idx} className="clue-item" style={{ flexDirection: 'column', gap: '0.3rem', alignItems: 'stretch', background: 'rgba(74,222,128,0.06)', border: '1px solid #4ade8030' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#4ade80', fontWeight: 700 }}>
+                        🔎 دليل مُميز: {clue.title || `دليل #${idx + 1}`}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{clue.category}</span>
+                    </div>
+                    <p style={{ fontSize: '0.88rem', color: 'var(--text-main)', lineHeight: '1.5' }}>{clue.text}</p>
+                    {clue.requires_puzzle && !investigationProgress.solved_puzzles?.includes(clue.puzzle_id) && (
+                      <span style={{ fontSize: '0.75rem', color: '#facc15', fontWeight: 700, marginTop: '0.2rem' }}>
+                        🔒 الدليل بحاجة لفك الشفرة من لوحة الأدلة!
+                      </span>
+                    )}
+                  </div>
+                ))}
+              {(activeCase?.clues || []).filter((c) => c.location_id === inspectedLocation.id).length === 0 && (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>لا توجد أدلة إضافية في هذا المكان.</p>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={() => {
+                  setInspectedLocation(null);
+                  setActiveTab('board');
+                }}
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+              >
+                الذهاب للوحة الأدلة 📌
+              </button>
+              <button
+                onClick={() => setInspectedLocation(null)}
+                className="btn btn-secondary"
+              >
+                إغلاق
               </button>
             </div>
           </div>
