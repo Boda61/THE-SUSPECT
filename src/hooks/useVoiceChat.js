@@ -15,43 +15,73 @@ export function useVoiceChat(roomId, userId) {
   const [isConnected, setIsConnected] = useState(false);
 
   const localStreamRef = useRef(null);
-  const peersRef = useRef({});       // { userId: RTCPeerConnection }
+  const peersRef = useRef({});
   const channelRef = useRef(null);
-  const audioRefs = useRef({});      // { userId: HTMLAudioElement }
+  const audioRefs = useRef({});
+  const speakerTimersRef = useRef({});
 
-  const getOrCreatePeer = useCallback((peerId) => {
+  const sendSignal = useCallback((payload) => {
+    channelRef.current?.send({ type: 'broadcast', event: 'voice_signal', payload });
+  }, []);
+
+  const createPeer = useCallback((peerId) => {
     if (peersRef.current[peerId]) return peersRef.current[peerId];
 
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        channelRef.current?.send({
-          type: 'broadcast',
-          event: 'voice_signal',
-          payload: { type: 'ice', from: userId, to: peerId, candidate: e.candidate },
-        });
+        sendSignal({ type: 'ice', from: userId, to: peerId, candidate: e.candidate });
       }
     };
 
     pc.ontrack = (e) => {
-      if (!audioRefs.current[peerId]) {
-        const audio = new Audio();
+      let audio = audioRefs.current[peerId];
+      if (!audio) {
+        audio = new Audio();
         audio.autoplay = true;
         audioRefs.current[peerId] = audio;
       }
-      audioRefs.current[peerId].srcObject = e.streams[0];
-      setActiveSpeakers((prev) => prev.includes(peerId) ? prev : [...prev, peerId]);
+      audio.srcObject = e.streams[0];
+
+      // Detect actual speech using AudioContext
+      try {
+        const ctx = new AudioContext();
+        const source = ctx.createMediaStreamSource(e.streams[0]);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+
+        const detect = () => {
+          if (!peersRef.current[peerId]) return;
+          analyser.getByteFrequencyData(data);
+          const avg = data.reduce((a, b) => a + b, 0) / data.length;
+          if (avg > 10) {
+            setActiveSpeakers((prev) => prev.includes(peerId) ? prev : [...prev, peerId]);
+            clearTimeout(speakerTimersRef.current[peerId]);
+            speakerTimersRef.current[peerId] = setTimeout(() => {
+              setActiveSpeakers((prev) => prev.filter((id) => id !== peerId));
+            }, 1500);
+          }
+          requestAnimationFrame(detect);
+        };
+        detect();
+      } catch (_) {}
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
         setActiveSpeakers((prev) => prev.filter((id) => id !== peerId));
         delete peersRef.current[peerId];
-        delete audioRefs.current[peerId];
+        if (audioRefs.current[peerId]) {
+          audioRefs.current[peerId].srcObject = null;
+          delete audioRefs.current[peerId];
+        }
       }
     };
 
+    // Add local tracks if mic is already open
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => {
         pc.addTrack(track, localStreamRef.current);
@@ -60,9 +90,26 @@ export function useVoiceChat(roomId, userId) {
 
     peersRef.current[peerId] = pc;
     return pc;
+  }, [userId, sendSignal]);
+
+  // Init mic once on mount — muted until push-to-talk
+  useEffect(() => {
+    if (!userId) return;
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then((stream) => {
+        stream.getAudioTracks().forEach((t) => { t.enabled = false; });
+        localStreamRef.current = stream;
+      })
+      .catch((err) => {
+        console.error('[voice mic init]', err);
+      });
+    return () => {
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    };
   }, [userId]);
 
-  // Setup signaling channel
+  // Signaling channel
   useEffect(() => {
     if (!roomId || !userId) return;
 
@@ -72,47 +119,43 @@ export function useVoiceChat(roomId, userId) {
 
     channel.on('broadcast', { event: 'voice_signal' }, async (payload) => {
       const signal = payload.payload;
-      if (!signal || signal.to !== userId) return;
+      if (!signal) return;
 
-      const pc = getOrCreatePeer(signal.from);
+      // join is broadcast to all — everyone creates a peer for the new joiner
+      if (signal.type === 'join' && signal.from !== userId) {
+        const pc = createPeer(signal.from);
+        if (localStreamRef.current) {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          sendSignal({ type: 'offer', from: userId, to: signal.from, offer });
+        }
+        return;
+      }
+
+      // All other signals are directed
+      if (signal.to !== userId) return;
+
+      const pc = createPeer(signal.from);
 
       if (signal.type === 'offer') {
         await pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        channel.send({
-          type: 'broadcast',
-          event: 'voice_signal',
-          payload: { type: 'answer', from: userId, to: signal.from, answer },
-        });
+        sendSignal({ type: 'answer', from: userId, to: signal.from, answer });
       } else if (signal.type === 'answer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
+        if (pc.signalingState !== 'stable') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
+        }
       } else if (signal.type === 'ice') {
         await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(() => {});
-      } else if (signal.type === 'join') {
-        // New peer joined — initiate offer if we have mic
-        if (localStreamRef.current) {
-          const newPc = getOrCreatePeer(signal.from);
-          const offer = await newPc.createOffer();
-          await newPc.setLocalDescription(offer);
-          channel.send({
-            type: 'broadcast',
-            event: 'voice_signal',
-            payload: { type: 'offer', from: userId, to: signal.from, offer },
-          });
-        }
       }
     });
 
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         setIsConnected(true);
-        // Announce presence to existing peers
-        channel.send({
-          type: 'broadcast',
-          event: 'voice_signal',
-          payload: { type: 'join', from: userId, to: '*' },
-        });
+        // Announce to all existing peers — no `to` filter needed for join
+        sendSignal({ type: 'join', from: userId });
       }
     });
 
@@ -123,40 +166,20 @@ export function useVoiceChat(roomId, userId) {
       channelRef.current = null;
       setIsConnected(false);
     };
-  }, [roomId, userId, getOrCreatePeer]);
+  }, [roomId, userId, createPeer, sendSignal]);
 
-  const startTalking = useCallback(async () => {
-    setMicError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      localStreamRef.current = stream;
-
-      // Mute by default — only unmute when holding
-      stream.getAudioTracks().forEach((t) => { t.enabled = true; });
-
-      // Add track to all existing peers
-      Object.entries(peersRef.current).forEach(async ([peerId, pc]) => {
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        channelRef.current?.send({
-          type: 'broadcast',
-          event: 'voice_signal',
-          payload: { type: 'offer', from: userId, to: peerId, offer },
-        });
-      });
-
-      setIsTalking(true);
-    } catch (err) {
-      setMicError('تعذّر الوصول للميكروفون. تأكد من منح الإذن.');
-      console.error('[voice startTalking]', err);
+  const startTalking = useCallback(() => {
+    if (!localStreamRef.current) {
+      setMicError('الميكروفون غير متاح. تأكد من منح الإذن وأعد تحميل الصفحة.');
+      return;
     }
-  }, [userId]);
+    localStreamRef.current.getAudioTracks().forEach((t) => { t.enabled = true; });
+    setIsTalking(true);
+    setMicError(null);
+  }, []);
 
   const stopTalking = useCallback(() => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach((t) => { t.enabled = false; });
-    }
+    localStreamRef.current?.getAudioTracks().forEach((t) => { t.enabled = false; });
     setIsTalking(false);
   }, []);
 
@@ -165,8 +188,10 @@ export function useVoiceChat(roomId, userId) {
     localStreamRef.current = null;
     Object.values(peersRef.current).forEach((pc) => pc.close());
     peersRef.current = {};
-    Object.values(audioRefs.current).forEach((audio) => { audio.srcObject = null; });
+    Object.values(audioRefs.current).forEach((a) => { a.srcObject = null; });
     audioRefs.current = {};
+    Object.values(speakerTimersRef.current).forEach(clearTimeout);
+    speakerTimersRef.current = {};
     setIsTalking(false);
     setActiveSpeakers([]);
   }, []);
