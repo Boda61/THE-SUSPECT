@@ -42,6 +42,23 @@ export default function Room() {
   const [myRole, setMyRole] = useState(null);
   const [activeCase] = useState(CASES[0]);
 
+  // Interactive Investigation state
+  const [activeTab, setActiveTab] = useState('scene');
+  const [investigationProgress, setInvestigationProgress] = useState({
+    searched_locations: [],
+    discovered_clues: [],
+    solved_puzzles: [],
+    made_connections: [],
+    recorded_contradictions: [],
+  });
+  const [selectedBoardClues, setSelectedBoardClues] = useState([]);
+  const [activePuzzle, setActivePuzzle] = useState(null);
+  const [puzzleAnswerInput, setPuzzleAnswerInput] = useState('');
+  const [puzzleError, setPuzzleError] = useState(null);
+  const [buildMotive, setBuildMotive] = useState('');
+  const [buildOpportunity, setBuildOpportunity] = useState('');
+  const [investigationTimeLeft, setInvestigationTimeLeft] = useState(null);
+
   const channelRef = useRef(null);
 
   const fetchLeaderboard = useCallback(async () => {
@@ -556,6 +573,155 @@ export default function Room() {
     }
   };
 
+  // — Interactive Investigation Handlers —
+
+  const fetchInvestigationProgress = useCallback(async () => {
+    if (!roomId || !room?.current_round) return;
+    try {
+      const { data } = await supabase.rpc('get_investigation_progress', {
+        p_room_id: roomId,
+        p_round_number: room.current_round,
+      });
+      if (data) setInvestigationProgress(data);
+    } catch (err) {
+      console.error('[get_investigation_progress]', err);
+    }
+  }, [roomId, room]);
+
+  // Sync investigation progress on investigation phase start
+  useEffect(() => {
+    if (room?.status === 'investigation') {
+      const timer = setTimeout(() => {
+        fetchInvestigationProgress();
+        setInvestigationTimeLeft(300);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [room?.status, fetchInvestigationProgress]);
+
+  // Investigation timer countdown
+  useEffect(() => {
+    if (room?.status !== 'investigation' || investigationTimeLeft === null) return;
+    if (investigationTimeLeft <= 0) return;
+
+    const timer = setInterval(() => {
+      setInvestigationTimeLeft((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [room?.status, investigationTimeLeft]);
+
+  const handleSearchLocation = async (loc) => {
+    if (investigationProgress.searched_locations?.includes(loc.id)) return;
+    try {
+      const { data } = await supabase.rpc('search_location', {
+        p_room_id: roomId,
+        p_round_number: room?.current_round || 1,
+        p_location_id: loc.id,
+      });
+      if (data) {
+        setInvestigationProgress(data);
+        broadcastRoomAction({ type: 'investigation_update' });
+      }
+    } catch (err) {
+      console.error('[search_location]', err);
+    }
+  };
+
+  const handleSolvePuzzle = async (puzzle) => {
+    if (!puzzleAnswerInput.trim()) return;
+    setPuzzleError(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('solve_clue_puzzle', {
+        p_room_id: roomId,
+        p_round_number: room?.current_round || 1,
+        p_puzzle_id: puzzle.id,
+        p_answer: puzzleAnswerInput.trim(),
+      });
+      if (rpcErr) {
+        setPuzzleError('إجابة خاطئة. حاول مرة أخرى!');
+      } else if (data) {
+        setInvestigationProgress(data);
+        setActivePuzzle(null);
+        setPuzzleAnswerInput('');
+        broadcastRoomAction({ type: 'investigation_update' });
+      }
+    } catch (err) {
+      setPuzzleError('حدث خطأ. حاول مجدداً.');
+      console.error('[solve_clue_puzzle]', err);
+    }
+  };
+
+  const handleAttemptConnection = async () => {
+    if (selectedBoardClues.length < 2) return;
+    const [clue1Id, clue2Id] = selectedBoardClues;
+    const connection = (activeCase.connections || []).find(
+      (c) => c.clue_ids?.includes(clue1Id) && c.clue_ids?.includes(clue2Id)
+    );
+    if (!connection) {
+      setSelectedBoardClues([]);
+      return;
+    }
+    try {
+      const { data } = await supabase.rpc('create_clue_connection', {
+        p_room_id: roomId,
+        p_round_number: room?.current_round || 1,
+        p_connection_id: connection.id,
+        p_clue1_id: clue1Id,
+        p_clue2_id: clue2Id,
+      });
+      if (data) {
+        setInvestigationProgress(data);
+        broadcastRoomAction({ type: 'investigation_update' });
+      }
+    } catch (err) {
+      console.error('[create_clue_connection]', err);
+    } finally {
+      setSelectedBoardClues([]);
+    }
+  };
+
+  const handleRecordContradiction = async (contradiction) => {
+    if (investigationProgress.recorded_contradictions?.includes(contradiction.id)) return;
+    try {
+      const { data } = await supabase.rpc('record_contradiction', {
+        p_room_id: roomId,
+        p_round_number: room?.current_round || 1,
+        p_contradiction_id: contradiction.id,
+        p_suspect_id: contradiction.suspect_id,
+        p_description: contradiction.description,
+      });
+      if (data) {
+        setInvestigationProgress(data);
+        broadcastRoomAction({ type: 'investigation_update' });
+      }
+    } catch (err) {
+      console.error('[record_contradiction]', err);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    if (seconds === null) return '';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  // Derived: which clues are currently accessible/discovered
+  const discoveredCluesList = (activeCase?.clues || []).filter((clue) => {
+    if (!clue.location_id) return true;
+    const isLocSearched = investigationProgress.searched_locations?.includes(clue.location_id);
+    if (!isLocSearched) return false;
+    if (clue.requires_puzzle) {
+      return investigationProgress.solved_puzzles?.includes(clue.puzzle_id);
+    }
+    return true;
+  });
+
+  const discoveredConnectionsList = (activeCase?.connections || []).filter((conn) =>
+    investigationProgress.made_connections?.includes(conn.id)
+  );
+
   // — Render states —
 
   if (loading) {
@@ -768,8 +934,8 @@ export default function Room() {
           </div>
         )}
 
-        {/* Phase: INVESTIGATION */}
-        {(room?.status === 'investigation' || room?.status === 'in_game') && (
+        {/* Phase: INVESTIGATION — Interactive Detective HQ */}
+        {(room?.status === 'investigation' || room?.status === 'in_game') && activeCase && (
           <div className="lobby-body">
             <div className="glass-card case-card">
               <div className="case-header">
@@ -779,54 +945,288 @@ export default function Room() {
                 </div>
                 <span className="difficulty-badge">{activeCase.difficulty}</span>
               </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: '1.7', marginBottom: '1.25rem' }}>{activeCase.description}</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.6', marginBottom: '1rem' }}>{activeCase.description}</p>
 
-              <h4 style={{ marginTop: '1.25rem', marginBottom: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 700 }}>
-                🔍 الأدلة المكتشفة بالكامل ({activeCase.clues.length} أدلة)
-              </h4>
-              <div className="clue-list">
-                {activeCase.clues.map((clue, idx) => {
-                  const difficultyLabels = {
-                    easy: { text: 'سهل', color: '#4ade80' },
-                    medium: { text: 'متوسط', color: '#facc15' },
-                    hard: { text: 'صعب', color: '#f87171' },
-                    funny: { text: 'مضحك', color: '#c084fc' },
-                  };
-                  const diff = difficultyLabels[clue.difficulty] || { text: clue.difficulty, color: 'var(--text-muted)' };
+              {/* Timer */}
+              {investigationTimeLeft !== null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', padding: '0.6rem 1rem', background: investigationTimeLeft < 60 ? 'rgba(248,113,113,0.12)' : 'rgba(99,102,241,0.1)', borderRadius: 'var(--radius-md)', border: investigationTimeLeft < 60 ? '1px solid #f8717140' : '1px solid rgba(99,102,241,0.2)' }}>
+                  <span>⏱️</span>
+                  <span style={{ fontWeight: 700, color: investigationTimeLeft < 60 ? '#f87171' : 'var(--primary)', fontSize: '1rem' }}>
+                    وقت التحقيق: {formatTime(investigationTimeLeft)}
+                  </span>
+                </div>
+              )}
 
-                  return (
-                    <div key={clue.id || idx} className="clue-item" style={{ flexDirection: 'column', gap: '0.4rem', alignItems: 'stretch' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                          دليل #{idx + 1} • {clue.category}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', background: 'rgba(255,255,255,0.06)', color: diff.color, fontWeight: 700, border: `1px solid ${diff.color}40` }}>
-                          {diff.text}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: '0.9375rem', lineHeight: '1.6', color: 'var(--text-main)' }}>{clue.text}</span>
-                    </div>
-                  );
-                })}
+              {/* Progress Bar */}
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', padding: '0.6rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
+                <span>🔍 أماكن مُفتشة: <strong>{investigationProgress.searched_locations?.length || 0}/{(activeCase.locations || []).length}</strong></span>
+                <span>💡 أدلة: <strong>{discoveredCluesList.length}/{(activeCase.clues || []).length}</strong></span>
+                <span>✨ ترابطات: <strong>{discoveredConnectionsList.length}/{(activeCase.connections || []).length}</strong></span>
               </div>
 
-              {isHost ? (
-                <div style={{ marginTop: '1.75rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                  <button onClick={handleAdvanceToVoting} className="btn btn-primary">
-                    الانتقال للتصويت السري ⚖️
+              {/* Tab Navigation */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+                {[
+                  ['scene', '🔎 مسرح الجريمة'],
+                  ['board', '📌 لوحة الأدلة'],
+                  ['interrogation', '🗣️ استجواب'],
+                  ['case', '📋 بناء الاتهام'],
+                ].map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    className={`btn btn-sm ${activeTab === tab ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setActiveTab(tab)}
+                  >
+                    {label}
                   </button>
-                  <button onClick={handleAdvanceToAccusation} className="btn btn-secondary">
-                    توجيه الاتهام المباشر 🎯
-                  </button>
+                ))}
+              </div>
+
+              {/* TAB 1: Crime Scene */}
+              {activeTab === 'scene' && (
+                <div>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>اضغط على أي مكان لتفتيشه واكتشاف الأدلة المخفية.</p>
+                  <div className="suspects-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                    {(activeCase.locations || []).map((loc) => {
+                      const isSearched = investigationProgress.searched_locations?.includes(loc.id);
+                      return (
+                        <div
+                          key={loc.id}
+                          className={`glass-card ${isSearched ? 'clue-selected' : ''}`}
+                          style={{ padding: '1rem', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.4rem', border: isSearched ? '1px solid #4ade8050' : '1px solid rgba(255,255,255,0.08)' }}
+                          onClick={() => handleSearchLocation(loc)}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '1.6rem' }}>{loc.icon}</span>
+                            {isSearched
+                              ? <span style={{ fontSize: '0.72rem', color: '#4ade80', fontWeight: 700 }}>✅ تم التفتيش</span>
+                              : <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 700 }}>🔍 اضغط للتفتيش</span>
+                            }
+                          </div>
+                          <h4 style={{ fontWeight: 700, fontSize: '0.95rem' }}>{loc.name}</h4>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>{loc.description}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              ) : (
-                <p style={{ marginTop: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                  ⏳ تناقش مع المحققين عبر المحادثة في انتظار الانتقال للتصويت...
-                </p>
+              )}
+
+              {/* TAB 2: Evidence Board */}
+              {activeTab === 'board' && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <h3 className="section-title">📌 لوحة الأدلة والترابط</h3>
+                    <button
+                      onClick={handleAttemptConnection}
+                      className="btn btn-primary btn-sm"
+                      disabled={selectedBoardClues.length < 2}
+                    >
+                      🔗 ربط الأدلة ({selectedBoardClues.length}/2)
+                    </button>
+                  </div>
+                  {discoveredCluesList.length === 0 ? (
+                    <div className="empty-state"><p>🔍 فتش مسرح الجريمة أولاً لاكتشاف أدلة.</p></div>
+                  ) : (
+                    <div className="clue-list">
+                      {discoveredCluesList.map((clue) => {
+                        const isSelected = selectedBoardClues.includes(clue.id);
+                        return (
+                          <div
+                            key={clue.id}
+                            className={`clue-item clue-selectable ${isSelected ? 'clue-selected' : ''}`}
+                            onClick={() => setSelectedBoardClues((prev) =>
+                              prev.includes(clue.id)
+                                ? prev.filter((id) => id !== clue.id)
+                                : prev.length < 2 ? [...prev, clue.id] : prev
+                            )}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                              <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>
+                                {isSelected ? '✅ ' : '⬜ '}{clue.title || clue.text?.substring(0, 40)}
+                              </span>
+                              <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>{clue.category}</span>
+                            </div>
+                            <p style={{ fontSize: '0.83rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{clue.text}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {discoveredConnectionsList.length > 0 && (
+                    <div style={{ marginTop: '1.25rem' }}>
+                      <h4 style={{ fontSize: '0.88rem', marginBottom: '0.6rem', color: '#4ade80', fontWeight: 700 }}>✨ الترابطات المكتشفة ({discoveredConnectionsList.length}):</h4>
+                      {discoveredConnectionsList.map((conn) => (
+                        <div key={conn.id} style={{ padding: '0.7rem 1rem', background: 'rgba(74,222,128,0.1)', border: '1px solid #4ade8040', borderRadius: 'var(--radius-md)', marginBottom: '0.4rem' }}>
+                          <strong style={{ color: '#4ade80', fontSize: '0.88rem' }}>{conn.title}</strong>
+                          <p style={{ fontSize: '0.83rem', color: 'var(--text-main)', marginTop: '0.2rem' }}>{conn.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(activeCase.clues || []).filter((c) => c.requires_puzzle && !investigationProgress.solved_puzzles?.includes(c.puzzle_id)).length > 0 && (
+                    <div style={{ marginTop: '1.25rem' }}>
+                      <h4 style={{ fontSize: '0.88rem', marginBottom: '0.6rem', color: '#facc15', fontWeight: 700 }}>🧩 أدلة مقفولة بحاجة لحل لغز:</h4>
+                      <div className="clue-list">
+                        {(activeCase.clues || [])
+                          .filter((c) => c.requires_puzzle && !investigationProgress.solved_puzzles?.includes(c.puzzle_id))
+                          .map((lockedClue) => {
+                            const puz = (activeCase.puzzles || []).find((p) => p.id === lockedClue.puzzle_id);
+                            return (
+                              <div key={lockedClue.id} className="clue-item" style={{ border: '1px dashed #facc1560', background: 'rgba(250,204,21,0.04)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                  <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#facc15' }}>🔒 {lockedClue.title}</span>
+                                  <button
+                                    onClick={() => { setActivePuzzle(puz); setPuzzleError(null); setPuzzleAnswerInput(''); }}
+                                    className="btn btn-secondary btn-sm"
+                                  >
+                                    🧩 فك الشفرة
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: Interrogation */}
+              {activeTab === 'interrogation' && (
+                <div>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>راجع أقوال كل مشتبه به واضغط على أي تناقض لتسجيله.</p>
+                  {(activeCase.interrogations || []).map((interr) => (
+                    <div key={interr.suspect_id} className="glass-card" style={{ marginBottom: '1rem', padding: '1rem' }}>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.65rem', color: 'var(--primary)' }}>👤 {interr.suspect_name}</h4>
+                      {(interr.statements || []).map((stmt, idx) => (
+                        <div key={idx} style={{ padding: '0.5rem 0.85rem', background: 'rgba(255,255,255,0.04)', borderRadius: 'var(--radius-sm)', marginBottom: '0.35rem', borderLeft: '3px solid rgba(99,102,241,0.4)' }}>
+                          <p style={{ fontSize: '0.86rem', color: 'var(--text-main)', lineHeight: '1.5' }}>"{stmt}"</p>
+                        </div>
+                      ))}
+                      {(interr.contradictions || []).map((contra) => {
+                        const isRec = investigationProgress.recorded_contradictions?.includes(contra.id);
+                        return (
+                          <div
+                            key={contra.id}
+                            style={{ marginTop: '0.45rem', padding: '0.55rem 0.85rem', background: isRec ? 'rgba(248,113,113,0.12)' : 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-sm)', border: isRec ? '1px solid #f8717135' : '1px dashed rgba(248,113,113,0.28)', cursor: isRec ? 'default' : 'pointer' }}
+                            onClick={() => !isRec && handleRecordContradiction(contra)}
+                          >
+                            <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#f87171' }}>{isRec ? '✅ تناقض مسجل: ' : '⚠️ اضغط لتسجيل: '}</span>
+                            <span style={{ fontSize: '0.83rem', color: 'var(--text-main)' }}>{contra.description}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                  {(activeCase.interrogations || []).length === 0 && (
+                    <div className="empty-state"><p>لا توجد استجوابات متاحة في هذه القضية.</p></div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 4: Build Case */}
+              {activeTab === 'case' && (
+                <div>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>اختر المتهم، الدافع، الفرصة، والأدلة لبناء ملف الاتهام النهائي.</p>
+
+                  <h4 style={{ fontSize: '0.88rem', marginBottom: '0.5rem' }}>1. المتهم المشتبه به:</h4>
+                  <div className="suspects-grid" style={{ marginBottom: '1.25rem' }}>
+                    {players.map((p) => {
+                      const isMe = p.user_id === user?.id;
+                      const isSelected = selectedSuspect?.user_id === p.user_id;
+                      return (
+                        <div
+                          key={p.id}
+                          className={`suspect-card ${isSelected ? 'suspect-card-selected' : ''}`}
+                          style={{ opacity: isMe ? 0.6 : 1, cursor: isMe ? 'not-allowed' : 'pointer' }}
+                          onClick={() => !isMe && setSelectedSuspect(p)}
+                        >
+                          <div className="player-avatar">{p.display_name?.charAt(0)?.toUpperCase()}</div>
+                          <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{p.display_name} {isMe && '(أنت)'}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.83rem', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>2. الدافع (Motive):</label>
+                      <input type="text" className="input-field" placeholder="مثال: الدافع المالي..." value={buildMotive} onChange={(e) => setBuildMotive(e.target.value)} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.83rem', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>3. الفرصة (Opportunity):</label>
+                      <input type="text" className="input-field" placeholder="مثال: الساعة 10:00 مساءً..." value={buildOpportunity} onChange={(e) => setBuildOpportunity(e.target.value)} />
+                    </div>
+                  </div>
+
+                  <h4 style={{ fontSize: '0.88rem', marginBottom: '0.5rem' }}>4. الأدلة المساندة:</h4>
+                  {discoveredCluesList.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>لم تُكتشف أدلة بعد. فتش مسرح الجريمة أولاً.</p>
+                  ) : (
+                    <div className="clue-list" style={{ marginBottom: '1.25rem' }}>
+                      {discoveredCluesList.map((clue) => {
+                        const isSel = selectedEvidence.includes(clue.id);
+                        return (
+                          <div
+                            key={clue.id}
+                            className={`clue-item clue-selectable ${isSel ? 'clue-selected' : ''}`}
+                            onClick={() => toggleEvidenceSelection(clue.id)}
+                          >
+                            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                              {isSel ? '✅ ' : '⬜ '}{clue.title || clue.text?.substring(0, 50)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {isHost && (
+                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <button onClick={handleAdvanceToVoting} className="btn btn-primary">الانتقال للتصويت 🗳️</button>
+                      <button
+                        onClick={() => setShowConfirmModal(true)}
+                        className="btn btn-secondary"
+                        disabled={!selectedSuspect || selectedEvidence.length < 1}
+                      >
+                        تأكيد الاتهام النهائي ⚖️
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
         )}
+
+        {/* Puzzle Solving Modal */}
+        {activePuzzle && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+            <div className="glass-card" style={{ maxWidth: '420px', width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800 }}>🧩 {activePuzzle.title}</h3>
+                <button onClick={() => setActivePuzzle(null)} className="btn btn-ghost btn-sm">✖</button>
+              </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1rem', lineHeight: '1.5' }}>{activePuzzle.hint}</p>
+              {puzzleError && <div className="error-message" role="alert" style={{ marginBottom: '0.75rem' }}>{puzzleError}</div>}
+              <input
+                type="text"
+                className="input-field"
+                placeholder="أدخل الإجابة هنا..."
+                value={puzzleAnswerInput}
+                onChange={(e) => setPuzzleAnswerInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSolvePuzzle(activePuzzle)}
+                style={{ marginBottom: '1rem' }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={() => handleSolvePuzzle(activePuzzle)} className="btn btn-primary" style={{ flex: 1 }}>فك الشفرة 🔓</button>
+                <button onClick={() => setActivePuzzle(null)} className="btn btn-secondary">إلغاء</button>
+              </div>
+            </div>
+          </div>
+        )}
+
 
         {/* Phase: VOTING */}
         {room?.status === 'voting' && (
@@ -1129,6 +1529,11 @@ export default function Room() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
           <div className="glass-card" style={{ maxWidth: '440px', width: '100%', textAlignment: 'center' }}>
             <h3 style={{ fontSize: '1.35rem', marginBottom: '0.75rem' }}>⚖️ تأكيد الاتهام النهائي</h3>
+            {accusationError && (
+              <div className="error-message" role="alert" style={{ marginBottom: '1rem' }}>
+                {accusationError}
+              </div>
+            )}
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', marginBottom: '1.25rem' }}>
               هل أنت متأكد من توجيه الاتهام رسمياً للاعب <strong style={{ color: 'var(--primary)' }}>{selectedSuspect?.display_name}</strong> بموجب الأدلة المختارة؟
             </p>

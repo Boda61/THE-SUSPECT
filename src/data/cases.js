@@ -5,19 +5,65 @@ export const CASES = [
     title: 'سر لغز المشروب السحري',
     description: 'شيء يومي مرتبط بالمزاج والتركيز، في ناس مبتعرفش تبدأ يومها من غيره ونسبة كبيرة من الشعب بتعشقه.',
     difficulty: 'متوسط',
+    locations: [
+      { id: 'loc-kitchen', name: 'المطبخ', icon: '🍳', description: 'في أركان المطبخ أسرار كتير... فتش هنا.' },
+      { id: 'loc-cafe', name: 'الكافيه', icon: '☕', description: 'مكان تجمع العشاق والأسرار، افتشه بعناية.' },
+      { id: 'loc-market', name: 'السوق', icon: '🛒', description: 'من هنا بتبدأ القصة، الرائحة بتنتشر في كل مكان.' },
+      { id: 'loc-office', name: 'مكان العمل', icon: '🏢', description: 'البيئة اللي مفيش محد بيشتغل من غيرها بجد.' },
+    ],
     clues: [
-      { id: 'c1', text: 'في ناس مبتقدرش تفتح عينها ولا تبدأ يومها من غير ما تشربها.', difficulty: 'easy', category: 'عادات يومية' },
-      { id: 'c2', text: 'ريحتها لوحدها في المكان ممكن تفوّق أي حد نايم.', difficulty: 'easy', category: 'الحياة اليومية' },
-      { id: 'c3', text: 'مرتبطة دايماً بالقعدة الحلوة، الكلام الكتير، والمذاكرة أيام الامتحانات.', difficulty: 'easy', category: 'مواقف اجتماعية' },
-      { id: 'c4', text: 'لو عملتها بوش مضبوط، بتعتبر نفسك عملت إنجاز عظيم.', difficulty: 'medium', category: 'طقوس مصرية' },
-      { id: 'c5', text: 'بتتطلب مضبوط، زيادة، أو سادة... وعلى حسب مزاج كل واحد.', difficulty: 'medium', category: 'تعبيرات شائعة' },
-      { id: 'c6', text: 'بتلاقي واحد قاعد معاها في الكافيه أكتر ما بيقعد مع أهله في البيت.', difficulty: 'medium', category: 'الحياة اليومية' },
-      { id: 'c7', text: 'لو نزلت نقطة منها على قميص أبيض قبل ما تنزل، يومك باظ رسمي 😂', difficulty: 'funny', category: 'مواقف مضحكة' },
-      { id: 'c8', text: 'في منها أنواع غالية ومستوردة، وفي أنواع بنعملها في كنزة على الناشف.', difficulty: 'hard', category: 'ثقافة مصرية' },
-      { id: 'c9', text: 'طريقتها بتفرق من بلد لبلد، بس عندنا هنا ليها طقوس محدش يفهمها غير عشاقها.', difficulty: 'hard', category: 'ثقافة مصرية' },
-      { id: 'c10', text: 'لو طلبتها من غير سكر، غالبًا اللي قاعد معاك بيبصلك بصلة إنك شخص قاسي ومبتتحبش 😅', difficulty: 'funny', category: 'مواقف مضحكة' },
+      { id: 'c1', title: 'دليل الصحيان', text: 'في ناس مبتقدرش تفتح عينها ولا تبدأ يومها من غير ما تشربها.', difficulty: 'easy', category: 'عادات يومية', location_id: 'loc-kitchen' },
+      { id: 'c2', title: 'دليل الرائحة', text: 'ريحتها لوحدها في المكان ممكن تفوّق أي حد نايم.', difficulty: 'easy', category: 'الحياة اليومية', location_id: 'loc-kitchen' },
+      { id: 'c3', title: 'دليل الكافيه', text: 'مرتبطة دايماً بالقعدة الحلوة، الكلام الكتير، والمذاكرة أيام الامتحانات.', difficulty: 'easy', category: 'مواقف اجتماعية', location_id: 'loc-cafe' },
+      { id: 'c4', title: 'دليل الطقوس', text: 'لو عملتها بوش مضبوط، بتعتبر نفسك عملت إنجاز عظيم.', difficulty: 'medium', category: 'طقوس مصرية', location_id: 'loc-kitchen', requires_puzzle: true, puzzle_id: 'puz-1' },
+      { id: 'c5', title: 'دليل التفضيل', text: 'بتتطلب مضبوط، زيادة، أو سادة... وعلى حسب مزاج كل واحد.', difficulty: 'medium', category: 'تعبيرات شائعة', location_id: 'loc-market' },
+      { id: 'c6', title: 'دليل الإدمان', text: 'بتلاقي واحد قاعد معاها في الكافيه أكتر ما بيقعد مع أهله في البيت.', difficulty: 'medium', category: 'الحياة اليومية', location_id: 'loc-cafe' },
+      { id: 'c7', title: 'دليل المصيبة', text: 'لو نزلت نقطة منها على قميص أبيض قبل ما تنزل، يومك باظ رسمي 😂', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-office' },
+      { id: 'c8', title: 'دليل الأنواع', text: 'في منها أنواع غالية ومستوردة، وفي أنواع بنعملها في كنزة على الناشف.', difficulty: 'hard', category: 'ثقافة مصرية', location_id: 'loc-market' },
+      { id: 'c9', title: 'دليل الثقافة', text: 'طريقتها بتفرق من بلد لبلد، بس عندنا هنا ليها طقوس محدش يفهمها غير عشاقها.', difficulty: 'hard', category: 'ثقافة مصرية', location_id: 'loc-cafe' },
+      { id: 'c10', title: 'دليل السكر', text: 'لو طلبتها من غير سكر، غالبًا اللي قاعد معاك بيبصلك بصلة إنك شخص قاسي ومبتتحبش 😅', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-office' },
+    ],
+    puzzles: [
+      {
+        id: 'puz-1',
+        title: 'شفرة المطبخ السرية',
+        hint: 'ده الشيء اللي بيحوّل الماء العادي لـ magic... اسمه في كلمة واحدة بالعربي (كلمة القضية نفسها)',
+        answer: 'القهوة',
+      },
+    ],
+    connections: [
+      { id: 'conn-1', title: '🔗 ارتباط الرائحة بالصحيان', clue_ids: ['c1', 'c2'], description: 'الرائحة الطاغية هي السلاح السري اللي بيصحّي الناس كل يوم.' },
+      { id: 'conn-2', title: '🔗 ارتباط الكافيه بالإدمان', clue_ids: ['c3', 'c6'], description: 'الكافيه هو المعبد الرسمي لعشاق هذا المشروب — مكان اللقاء والإدمان.' },
+      { id: 'conn-3', title: '🔗 ارتباط الأنواع بالثقافة', clue_ids: ['c8', 'c9'], description: 'تنوع الأنواع والطرق يعكس ثقافة متجذرة وأصيلة لدى الشعب.' },
+    ],
+    interrogations: [
+      {
+        suspect_id: 'suspect-ahmed',
+        suspect_name: 'أحمد — الموظف المتعب',
+        statements: [
+          'أنا بابدأ يومي بشرب حاجة دافية قبل ما أدخل الأوفيس خالص.',
+          'مش ممكن أركز في الشغل من غير ما أكمل أول ساعة صح.',
+          'مرتبطة ليا بورقة الصحف الصبح وأخبار البلد.',
+        ],
+        contradictions: [
+          { id: 'contra-1', suspect_id: 'suspect-ahmed', description: 'قال إنه بيبدأ يومه قبل الأوفيس، لكن قبل كده قال مبيصحاش قبل الشغل بساعة!' },
+        ],
+      },
+      {
+        suspect_id: 'suspect-sara',
+        suspect_name: 'سارة — طالبة الجامعة',
+        statements: [
+          'أنا بشرب الحاجة دي بس وقت الامتحانات عشان أذاكر بالليل.',
+          'مبحبش الحاجات السكر أوي، بفضل الخفيف.',
+          'صاحبتي بتجيبلي أحياناً من البرة بأنواع غريبة.',
+        ],
+        contradictions: [
+          { id: 'contra-2', suspect_id: 'suspect-sara', description: 'قالت إنها بتشربها بس وقت الامتحانات، لكن الكافيه قالوا إنها زبون يومي منذ 6 أشهر!' },
+        ],
+      },
     ],
   },
+
   {
     id: 'case-phone',
     secret_word: 'الموبايل',
