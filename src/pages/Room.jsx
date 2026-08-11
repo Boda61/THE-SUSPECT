@@ -26,6 +26,19 @@ export default function Room() {
   const [startingNextRound, setStartingNextRound] = useState(false);
   const [accusationError, setAccusationError] = useState(null);
 
+  // Voting phase state
+  const [myVotedSuspectId, setMyVotedSuspectId] = useState(null);
+  const [votingSummary, setVotingSummary] = useState({ total_players: 0, votes_count: 0, tally: [] });
+  const [submittingVote, setSubmittingVote] = useState(false);
+  const [voteError, setVoteError] = useState(null);
+
+  // Realtime Chat / Discussion state
+  const [messages, setMessages] = useState([]);
+  const [newMessageText, setNewMessageText] = useState('');
+  const [sendingMsg, setSendingMsg] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const chatBottomRef = useRef(null);
+
   const [myRole, setMyRole] = useState(null);
   const [activeCase] = useState(CASES[0]);
 
@@ -38,6 +51,27 @@ export default function Room() {
     });
     if (!lbError && data) {
       setLeaderboard(data);
+    }
+  }, [roomId]);
+
+  const fetchMessages = useCallback(async () => {
+    if (!roomId) return;
+    const { data } = await supabase
+      .from('room_messages')
+      .select('id, user_id, display_name, message, created_at, round_number')
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true });
+    if (data) setMessages(data);
+  }, [roomId]);
+
+  const fetchVotingSummary = useCallback(async () => {
+    if (!roomId) return;
+    const { data } = await supabase.rpc('get_room_votes_summary', { p_room_id: roomId });
+    if (data) {
+      setVotingSummary(data);
+      if (data.my_vote_suspect_id) {
+        setMyVotedSuspectId(data.my_vote_suspect_id);
+      }
     }
   }, [roomId]);
 
@@ -75,18 +109,23 @@ export default function Room() {
       setPlayers(playersData || []);
       setLoading(false);
 
-      // Initial leaderboard fetch
-      const { data: lbData } = await supabase.rpc('get_room_leaderboard', {
-        p_room_id: roomId,
-      });
-      if (!cancelled && lbData) setLeaderboard(lbData);
+      // Initial fetches
+      fetchLeaderboard();
+      fetchMessages();
+      fetchVotingSummary();
     };
 
     loadRoom();
     return () => { cancelled = true; };
-  }, [roomId, user]);
+  }, [roomId, user, fetchLeaderboard, fetchMessages, fetchVotingSummary]);
 
-  // Realtime subscription for room_players, rooms status, and round_scores
+  useEffect(() => {
+    if (chatBottomRef.current && isChatOpen) {
+      chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isChatOpen]);
+
+  // Realtime subscription for room_players, rooms status, round_scores, room_messages, and room_votes
   useEffect(() => {
     if (!roomId || !user || loading) return;
 
@@ -133,6 +172,9 @@ export default function Room() {
             if (payload.new.status === 'results') {
               fetchLeaderboard();
             }
+            if (payload.new.status === 'voting') {
+              fetchVotingSummary();
+            }
           }
         }
       )
@@ -148,9 +190,38 @@ export default function Room() {
           fetchLeaderboard();
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'room_messages',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === payload.new.id)) return prev;
+              return [...prev, payload.new];
+            });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'room_votes',
+          filter: `room_id=eq.${roomId}`,
+        },
+        () => {
+          fetchVotingSummary();
+        }
+      )
       .on('broadcast', { event: 'room_action' }, (payload) => {
         if (payload?.payload) {
-          const { status, current_round, accusation_data, fetchLb } = payload.payload;
+          const { status, current_round, accusation_data, fetchLb, fetchVotes } = payload.payload;
           setRoom((prev) => {
             if (!prev) return prev;
             const updated = { ...prev };
@@ -159,9 +230,8 @@ export default function Room() {
             if (accusation_data !== undefined) updated.accusation_data = accusation_data;
             return updated;
           });
-          if (fetchLb) {
-            fetchLeaderboard();
-          }
+          if (fetchLb) fetchLeaderboard();
+          if (fetchVotes) fetchVotingSummary();
         }
       })
       .subscribe();
@@ -174,7 +244,7 @@ export default function Room() {
         channelRef.current = null;
       }
     };
-  }, [roomId, user, loading, fetchLeaderboard]);
+  }, [roomId, user, loading, fetchLeaderboard, fetchVotingSummary]);
 
   const broadcastRoomAction = (payload = {}) => {
     channelRef.current?.send({
@@ -315,6 +385,22 @@ export default function Room() {
     }
   };
 
+  const handleAdvanceToVoting = async () => {
+    setRoom((prev) => (prev ? { ...prev, status: 'voting' } : prev));
+    broadcastRoomAction({ status: 'voting' });
+    try {
+      const { error: rpcError } = await supabase.rpc('advance_room_status', {
+        p_room_id: roomId,
+        p_next_status: 'voting',
+      });
+      if (rpcError) {
+        console.error('[advance_room_status voting]', rpcError);
+      }
+    } catch (err) {
+      console.error('[advance_room_status voting exception]', err);
+    }
+  };
+
   const handleAdvanceToAccusation = async () => {
     setRoom((prev) => (prev ? { ...prev, status: 'accusation' } : prev));
     broadcastRoomAction({ status: 'accusation' });
@@ -328,6 +414,58 @@ export default function Room() {
       }
     } catch (err) {
       console.error('[advance_room_status accusation exception]', err);
+    }
+  };
+
+  const handleVoteSuspect = async (suspectPlayer) => {
+    if (submittingVote || suspectPlayer.user_id === user?.id) return;
+    setVoteError(null);
+    setSubmittingVote(true);
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc('submit_vote', {
+        p_room_id: roomId,
+        p_suspect_user_id: suspectPlayer.user_id,
+        p_suspect_name: suspectPlayer.display_name,
+      });
+
+      if (rpcError) {
+        setVoteError('فشل تسجيل التصويت. تأكد أنك لا تصوت لنفسك.');
+        console.error('[submit_vote]', rpcError);
+      } else if (data) {
+        setMyVotedSuspectId(suspectPlayer.user_id);
+        fetchVotingSummary();
+        broadcastRoomAction({ type: 'vote_submitted', fetchVotes: true });
+      }
+    } catch (err) {
+      setVoteError('حدث خطأ أثناء التصويت.');
+      console.error('[submit_vote exception]', err);
+    } finally {
+      setSubmittingVote(false);
+    }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (sendingMsg || !newMessageText.trim()) return;
+    setSendingMsg(true);
+
+    try {
+      const text = newMessageText.trim();
+      setNewMessageText('');
+      const { error: rpcError } = await supabase.rpc('send_room_message', {
+        p_room_id: roomId,
+        p_message: text,
+      });
+      if (rpcError) {
+        console.error('[send_room_message]', rpcError);
+      } else {
+        broadcastRoomAction({ type: 'chat_message' });
+      }
+    } catch (err) {
+      console.error('[send_room_message exception]', err);
+    } finally {
+      setSendingMsg(false);
     }
   };
 
@@ -382,6 +520,7 @@ export default function Room() {
       } else {
         setSelectedSuspect(null);
         setSelectedEvidence([]);
+        setMyVotedSuspectId(null);
         const nextRound = (room?.current_round || 1) + 1;
         setRoom((prev) => (prev ? { ...prev, status: 'waiting', current_round: nextRound } : prev));
         broadcastRoomAction({ status: 'waiting', current_round: nextRound, fetchLb: true });
@@ -460,8 +599,9 @@ export default function Room() {
     waiting: 'في الانتظار',
     starting: 'بدء اللعبة',
     role_assignment: 'توزيع الأدوار',
-    investigation: 'التحقيق',
-    accusation: 'توجيه الاتهام',
+    investigation: 'التحقيق والدردشة',
+    voting: 'التصويت السري',
+    accusation: 'توجيه الاتهام النهائي',
     verdict: 'صدور الحكم',
     results: 'النتيجة وسباق النقاط',
     in_game: 'جارٍ اللعب',
@@ -485,13 +625,22 @@ export default function Room() {
     <div className="page-wrapper">
       <header className="app-header">
         <div className="logo">المشتبه به</div>
-        <button
-          onClick={handleLeaveRoom}
-          className="btn btn-ghost btn-sm"
-          disabled={leaving}
-        >
-          {leaving ? 'جاري المغادرة...' : 'مغادرة الغرفة →'}
-        </button>
+        <div className="header-right" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <button
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            className="btn btn-ghost btn-sm"
+            style={{ position: 'relative' }}
+          >
+            💬 غرف التحقيق ({messages.length})
+          </button>
+          <button
+            onClick={handleLeaveRoom}
+            className="btn btn-ghost btn-sm"
+            disabled={leaving}
+          >
+            {leaving ? 'جاري المغادرة...' : 'مغادرة الغرفة →'}
+          </button>
+        </div>
       </header>
 
       <main className="lobby-main">
@@ -517,6 +666,62 @@ export default function Room() {
             <span className="room-code-copy">📋 انسخ</span>
           </button>
         </div>
+
+        {/* Realtime Chat Drawer / Panel */}
+        {isChatOpen && (
+          <div className="glass-card" style={{ marginBottom: '1.5rem', padding: '1.25rem', border: '1px solid var(--primary)30' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>💬 غرفة المناقشة الفورية والتحقيق</h3>
+              <button onClick={() => setIsChatOpen(false)} className="btn btn-ghost btn-sm">إغلاق ✖</button>
+            </div>
+
+            <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem', paddingRight: '0.25rem', marginBottom: '1rem' }}>
+              {messages.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', margin: '1rem 0' }}>
+                  لا توجد رسائل بعد. ابدأ مناقشة الأدلة والشكوك مع المحققين!
+                </p>
+              ) : (
+                messages.map((msg) => {
+                  const isMe = msg.user_id === user?.id;
+                  return (
+                    <div
+                      key={msg.id}
+                      style={{
+                        alignSelf: isMe ? 'flex-end' : 'flex-start',
+                        background: isMe ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                        border: isMe ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid rgba(255,255,255,0.08)',
+                        padding: '0.5rem 0.85rem',
+                        borderRadius: 'var(--radius-md)',
+                        maxWidth: '82%',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.725rem', color: isMe ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700, marginBottom: '0.15rem' }}>
+                        {msg.display_name} {isMe && '(أنت)'}
+                      </div>
+                      <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: '1.4' }}>{msg.message}</div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+
+            <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="اكتب رسالتك للمحققين..."
+                value={newMessageText}
+                onChange={(e) => setNewMessageText(e.target.value)}
+                maxLength={300}
+                style={{ flex: 1 }}
+              />
+              <button type="submit" className="btn btn-primary btn-sm" disabled={sendingMsg || !newMessageText.trim()}>
+                إرسال 📩
+              </button>
+            </form>
+          </div>
+        )}
 
         {/* Phase: STARTING */}
         {room?.status === 'starting' && (
@@ -606,98 +811,79 @@ export default function Room() {
               </div>
 
               {isHost ? (
-                <div style={{ marginTop: '1.75rem' }}>
-                  <button onClick={handleAdvanceToAccusation} className="btn btn-primary">
-                    توجيه الاتهام النهائي ⚖️
+                <div style={{ marginTop: '1.75rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <button onClick={handleAdvanceToVoting} className="btn btn-primary">
+                    الانتقال للتصويت السري ⚖️
+                  </button>
+                  <button onClick={handleAdvanceToAccusation} className="btn btn-secondary">
+                    توجيه الاتهام المباشر 🎯
                   </button>
                 </div>
               ) : (
                 <p style={{ marginTop: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                  ⏳ المحقق الرئيسي ينظر في الأدلة قبل الانتقال لاتهام الجاني...
+                  ⏳ تناقش مع المحققين عبر المحادثة في انتظار الانتقال للتصويت...
                 </p>
               )}
             </div>
           </div>
         )}
 
-        {/* Phase: ACCUSATION */}
-        {room?.status === 'accusation' && (
+        {/* Phase: VOTING */}
+        {room?.status === 'voting' && (
           <div className="lobby-body">
             <div className="glass-card">
-              <h3 className="section-title">⚖️ توجيه الاتهام النهائي</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                <h3 className="section-title">🗳️ مرحلة التصويت السري</h3>
+                <span className="difficulty-badge" style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--primary)' }}>
+                  اصوات المحققين: {votingSummary.votes_count} / {votingSummary.total_players}
+                </span>
+              </div>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-                اختر اللاعب المشتبه به وحدد الأدلة المؤيدة للاتهام قبل استصدار الحكم.
+                صوّت سراً للاعب الذي تتوقع أنه المشتبه به. لا يمكنك التصويت لنفسك.
               </p>
 
-              {/* Suspect Selection */}
-              <h4 style={{ fontSize: '0.9rem', color: 'var(--text-main)', marginBottom: '0.75rem' }}>
-                1. اختر المتهم الرئيسي من اللاعبين:
-              </h4>
-              <div className="suspects-grid">
-                {players.map((p) => {
-                  const isSelected = selectedSuspect?.id === p.id;
-                  return (
-                    <div
-                      key={p.id}
-                      className={`suspect-card ${isSelected ? 'suspect-card-selected' : ''}`}
-                      onClick={() => isHost && setSelectedSuspect(p)}
-                    >
-                      <div className="player-avatar">{p.display_name?.charAt(0)?.toUpperCase()}</div>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.9375rem' }}>{p.display_name}</div>
-                        {isSelected && <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 700 }}>مُحدد كمتهم</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Supporting Evidence Selection */}
-              <h4 style={{ fontSize: '0.9rem', color: 'var(--text-main)', marginTop: '1.75rem', marginBottom: '0.75rem' }}>
-                2. حدد الأدلة المؤيدة للاتهام (اختر دليليين على الأقل):
-              </h4>
-              <div className="clue-list">
-                {activeCase.clues.map((clue, idx) => {
-                  const clueKey = clue.id || `c${idx+1}`;
-                  const isSelected = selectedEvidence.includes(clueKey);
-
-                  return (
-                    <div
-                      key={clueKey}
-                      className={`clue-item clue-selectable ${isSelected ? 'clue-selected' : ''}`}
-                      onClick={() => isHost && toggleEvidenceSelection(clueKey)}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                          {isSelected ? '✅ دليل مؤيد' : '⬜ اضغط للااختيار'} • {clue.category}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{clue.text}</span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {accusationError && (
-                <div className="error-message" role="alert" style={{ marginTop: '1rem' }}>
-                  {accusationError}
+              {voteError && (
+                <div className="error-message" role="alert" style={{ marginBottom: '1rem' }}>
+                  {voteError}
                 </div>
               )}
 
-              {isHost ? (
+              <div className="suspects-grid">
+                {players.map((p) => {
+                  const isMe = p.user_id === user?.id;
+                  const isMyVoted = myVotedSuspectId === p.user_id;
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`suspect-card ${isMyVoted ? 'suspect-card-selected' : ''}`}
+                      style={{ opacity: isMe ? 0.6 : 1, cursor: isMe ? 'not-allowed' : 'pointer' }}
+                      onClick={() => !isMe && handleVoteSuspect(p)}
+                    >
+                      <div className="player-avatar">{p.display_name?.charAt(0)?.toUpperCase()}</div>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.9375rem' }}>
+                          {p.display_name} {isMe && '(أنت)'}
+                        </div>
+                        {isMyVoted ? (
+                          <span style={{ fontSize: '0.75rem', color: '#4ade80', fontWeight: 700 }}>✅ صوتك الحالي</span>
+                        ) : isMe ? (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>لا يمكنك التصويت لنفسك</span>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--primary)' }}>اضغط للتصويت 🗳️</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {isHost && (
                 <div style={{ marginTop: '1.75rem' }}>
-                  <button
-                    onClick={() => setShowConfirmModal(true)}
-                    className="btn btn-primary"
-                    disabled={!selectedSuspect || selectedEvidence.length < 1}
-                  >
-                    تأكيد الاتهام وإصدار الحكم ⚖️
+                  <button onClick={handleAdvanceToAccusation} className="btn btn-primary">
+                    اعتماد النتيجة والتأكيد النهائي ⚖️
                   </button>
                 </div>
-              ) : (
-                <p style={{ marginTop: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                  ⏳ المحقق الرئيسي يقوم الآن بمراجعة الأدلة وتحديد المتهم...
-                </p>
               )}
             </div>
           </div>

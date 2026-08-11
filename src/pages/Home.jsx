@@ -124,11 +124,16 @@ export default function Home() {
     ? '...'
     : profile?.username || user?.email?.split('@')[0] || 'عميل';
 
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
+
   return (
     <div className="page-wrapper">
       <header className="app-header">
         <div className="logo">The Suspect </div>
         <div className="header-right">
+          <button onClick={() => setShowHowToPlay(true)} className="btn btn-ghost btn-sm">
+            📖 طريقة اللعب
+          </button>
           <span className="header-greeting">
             أهلاً، <strong>{displayName}</strong>
           </span>
@@ -225,7 +230,58 @@ export default function Home() {
             </form>
           </div>
         </div>
+
+        {/* How to Play Card Banner */}
+        <div className="glass-card" style={{ marginTop: '2rem', padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.25rem' }}>❓ كيف تلعب لعبة المشتبه به؟</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>تعرّف على القواعد وتوزيع الأدوار ونظام جمع النقاط قبل بدء الجولة.</p>
+          </div>
+          <button onClick={() => setShowHowToPlay(true)} className="btn btn-secondary btn-sm">
+            عرض القواعد والتعليمات ←
+          </button>
+        </div>
       </main>
+
+      {/* How to Play Modal */}
+      {showHowToPlay && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="glass-card" style={{ maxWidth: '560px', width: '100%', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem' }}>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 800 }}>📖 دليل وتكيف اللعبة (How to Play)</h3>
+              <button onClick={() => setShowHowToPlay(false)} className="btn btn-ghost btn-sm" aria-label="إغلاق">✖</button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', fontSize: '0.925rem', lineHeight: '1.6' }}>
+              <div>
+                <h4 style={{ color: 'var(--primary)', fontSize: '1rem', fontWeight: 700, marginBottom: '0.35rem' }}>🕵️ 1. توزيع الأدوار السرية</h4>
+                <p style={{ color: 'var(--text-muted)' }}>عند بدء الجولة، يقوم النظام بتعيين دور سرّي لكل لاعب تلقائياً. لاعب واحد يكون **المشتبه به** وباقي اللاعبين **محققون**.</p>
+              </div>
+
+              <div>
+                <h4 style={{ color: 'var(--primary)', fontSize: '1rem', fontWeight: 700, marginBottom: '0.35rem' }}>🔍 2. مرحلة التحقيق والمناقشة</h4>
+                <p style={{ color: 'var(--text-muted)' }}>يتم كشف ملف القضية والأدلة المكتشفة. يتناقش المحققون عبر المحادثة اللحظية لتحليل الدلائل وكشف الثغرات.</p>
+              </div>
+
+              <div>
+                <h4 style={{ color: 'var(--primary)', fontSize: '1rem', fontWeight: 700, marginBottom: '0.35rem' }}>⚖️ 3. التصويت السري والاتهام</h4>
+                <p style={{ color: 'var(--text-muted)' }}>يصوت كل محقق سراً على المتهم الرئيسي. بعد اكتمال التصويت، يتفق الفريق على الاتهام والوصول للحكم النهائي.</p>
+              </div>
+
+              <div>
+                <h4 style={{ color: 'var(--primary)', fontSize: '1rem', fontWeight: 700, marginBottom: '0.35rem' }}>🏆 4. النتيجة وسباق النقاط</h4>
+                <p style={{ color: 'var(--text-muted)' }}>إذا كشف المحققون المشتبه به، يحصلون على نقاط إضافية. وإذا نجح المشتبه به في التخفي، يحصد هو النقاط الكاملة وترتفع مرتبته في جدول الترتيب التراكمي!</p>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '1.75rem', textAlign: 'center' }}>
+              <button onClick={() => setShowHowToPlay(false)} className="btn btn-primary" style={{ width: '100%' }}>
+                فهمت، لنبدأ التحقيق! 🔍
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
