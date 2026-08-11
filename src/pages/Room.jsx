@@ -148,6 +148,22 @@ export default function Room() {
           fetchLeaderboard();
         }
       )
+      .on('broadcast', { event: 'room_action' }, (payload) => {
+        if (payload?.payload) {
+          const { status, current_round, accusation_data, fetchLb } = payload.payload;
+          setRoom((prev) => {
+            if (!prev) return prev;
+            const updated = { ...prev };
+            if (status) updated.status = status;
+            if (current_round !== undefined) updated.current_round = current_round;
+            if (accusation_data !== undefined) updated.accusation_data = accusation_data;
+            return updated;
+          });
+          if (fetchLb) {
+            fetchLeaderboard();
+          }
+        }
+      })
       .subscribe();
 
     channelRef.current = channel;
@@ -159,6 +175,14 @@ export default function Room() {
       }
     };
   }, [roomId, user, loading, fetchLeaderboard]);
+
+  const broadcastRoomAction = (payload = {}) => {
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'room_action',
+      payload,
+    });
+  };
 
   // Polling fallback to keep players synced if Realtime WebSocket drops or delays
   useEffect(() => {
@@ -197,7 +221,7 @@ export default function Room() {
       } catch (pollErr) {
         console.error('[Room polling error]', pollErr);
       }
-    }, 4000);
+    }, 2000);
 
     return () => clearInterval(interval);
   }, [roomId, user, loading]);
@@ -235,6 +259,7 @@ export default function Room() {
       });
       if (!rpcError) {
         setRoom((prev) => (prev ? { ...prev, status: 'role_assignment' } : prev));
+        broadcastRoomAction({ status: 'role_assignment' });
       }
     }, 2500);
 
@@ -264,6 +289,7 @@ export default function Room() {
         console.error('[start_game]', rpcError);
       } else {
         setRoom((prev) => (prev ? { ...prev, status: 'starting' } : prev));
+        broadcastRoomAction({ status: 'starting' });
       }
     } catch (err) {
       setStartError('حدث خطأ غير متوقع عند بدء اللعبة. حاول مرة أخرى.');
@@ -275,6 +301,7 @@ export default function Room() {
 
   const handleAdvanceToInvestigation = async () => {
     setRoom((prev) => (prev ? { ...prev, status: 'investigation' } : prev));
+    broadcastRoomAction({ status: 'investigation' });
     try {
       const { error: rpcError } = await supabase.rpc('advance_room_status', {
         p_room_id: roomId,
@@ -290,6 +317,7 @@ export default function Room() {
 
   const handleAdvanceToAccusation = async () => {
     setRoom((prev) => (prev ? { ...prev, status: 'accusation' } : prev));
+    broadcastRoomAction({ status: 'accusation' });
     try {
       const { error: rpcError } = await supabase.rpc('advance_room_status', {
         p_room_id: roomId,
@@ -329,6 +357,7 @@ export default function Room() {
         console.error('[submit_accusation]', rpcError);
       } else if (data) {
         setRoom((prev) => (prev ? { ...prev, status: 'results', accusation_data: data } : prev));
+        broadcastRoomAction({ status: 'results', accusation_data: data, fetchLb: true });
         fetchLeaderboard();
       }
     } catch (err) {
@@ -353,7 +382,9 @@ export default function Room() {
       } else {
         setSelectedSuspect(null);
         setSelectedEvidence([]);
-        setRoom((prev) => (prev ? { ...prev, status: 'waiting', current_round: (prev.current_round || 1) + 1 } : prev));
+        const nextRound = (room?.current_round || 1) + 1;
+        setRoom((prev) => (prev ? { ...prev, status: 'waiting', current_round: nextRound } : prev));
+        broadcastRoomAction({ status: 'waiting', current_round: nextRound, fetchLb: true });
       }
     } catch (err) {
       console.error('[start_next_round exception]', err);
