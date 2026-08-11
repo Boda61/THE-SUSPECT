@@ -67,6 +67,7 @@ export default function Room() {
   const [sendingQuestion, setSendingQuestion] = useState(false);
 
   const channelRef = useRef(null);
+  const chatChannelRef = useRef(null);
 
   const fetchLeaderboard = useCallback(async () => {
     if (!roomId) return;
@@ -217,23 +218,6 @@ export default function Room() {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'room_messages',
-          filter: `room_id=eq.${roomId}`,
-        },
-        (payload) => {
-          if (payload.new) {
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === payload.new.id)) return prev;
-              return [...prev, payload.new];
-            });
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
           event: '*',
           schema: 'public',
           table: 'room_votes',
@@ -286,7 +270,45 @@ export default function Room() {
     });
   };
 
-  // Polling fallback to keep players synced if Realtime WebSocket drops or delays
+  // Dedicated realtime chat channel
+  useEffect(() => {
+    if (!roomId || !user || loading) return;
+
+    if (chatChannelRef.current) {
+      supabase.removeChannel(chatChannelRef.current);
+    }
+
+    const chatChannel = supabase
+      .channel(`chat:${roomId}`, { config: { broadcast: { self: true } } })
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'room_messages',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === payload.new.id)) return prev;
+              return [...prev, payload.new];
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    chatChannelRef.current = chatChannel;
+
+    return () => {
+      if (chatChannelRef.current) {
+        supabase.removeChannel(chatChannelRef.current);
+        chatChannelRef.current = null;
+      }
+    };
+  }, [roomId, user, loading]);
+
   useEffect(() => {
     if (!roomId || !user || loading) return;
 
@@ -482,19 +504,19 @@ export default function Room() {
     if (sendingMsg || !newMessageText.trim()) return;
     setSendingMsg(true);
 
+    const text = newMessageText.trim();
+    setNewMessageText('');
+
     try {
-      const text = newMessageText.trim();
-      setNewMessageText('');
-      const { data: msgData, error: rpcError } = await supabase.rpc('send_room_message', {
+      const { error: rpcError } = await supabase.rpc('send_room_message', {
         p_room_id: roomId,
         p_message: text,
       });
       if (rpcError) {
         console.error('[send_room_message]', rpcError);
-      } else {
-        // Broadcast the full message object so all clients append it immediately
-        broadcastRoomAction({ type: 'chat_message', message: msgData });
       }
+      // Always re-fetch after send to ensure sender also sees latest messages
+      fetchMessages();
     } catch (err) {
       console.error('[send_room_message exception]', err);
     } finally {
@@ -577,6 +599,10 @@ export default function Room() {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
+      }
+      if (chatChannelRef.current) {
+        supabase.removeChannel(chatChannelRef.current);
+        chatChannelRef.current = null;
       }
 
       const { error: rpcError } = await supabase.rpc('leave_room', {
