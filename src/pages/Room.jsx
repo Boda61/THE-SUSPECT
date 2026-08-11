@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { CASES } from '../data/cases';
 import SuspectHQ from '../components/SuspectHQ';
+import VoiceChat from '../components/VoiceChat';
 
 export default function Room() {
   const { roomCode: roomId } = useParams();
@@ -898,13 +899,6 @@ export default function Room() {
         <div className="logo">المشتبه به</div>
         <div className="header-right" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <button
-            onClick={() => setIsChatOpen(!isChatOpen)}
-            className="btn btn-ghost btn-sm"
-            style={{ position: 'relative' }}
-          >
-            💬 غرف التحقيق ({messages.length})
-          </button>
-          <button
             onClick={handleLeaveRoom}
             className="btn btn-ghost btn-sm"
             disabled={leaving}
@@ -938,61 +932,8 @@ export default function Room() {
           </button>
         </div>
 
-        {/* Realtime Chat Drawer / Panel */}
-        {isChatOpen && (
-          <div className="glass-card" style={{ marginBottom: '1.5rem', padding: '1.25rem', border: '1px solid var(--primary)30' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>💬 غرفة المناقشة الفورية والتحقيق</h3>
-              <button onClick={() => setIsChatOpen(false)} className="btn btn-ghost btn-sm">إغلاق ✖</button>
-            </div>
-
-            <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem', paddingRight: '0.25rem', marginBottom: '1rem' }}>
-              {messages.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', margin: '1rem 0' }}>
-                  لا توجد رسائل بعد. ابدأ مناقشة الأدلة والشكوك مع المحققين!
-                </p>
-              ) : (
-                messages.map((msg) => {
-                  const isMe = msg.user_id === user?.id;
-                  return (
-                    <div
-                      key={msg.id}
-                      style={{
-                        alignSelf: isMe ? 'flex-end' : 'flex-start',
-                        background: isMe ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
-                        border: isMe ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid rgba(255,255,255,0.08)',
-                        padding: '0.5rem 0.85rem',
-                        borderRadius: 'var(--radius-md)',
-                        maxWidth: '82%',
-                      }}
-                    >
-                      <div style={{ fontSize: '0.725rem', color: isMe ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 700, marginBottom: '0.15rem' }}>
-                        {msg.display_name} {isMe && '(أنت)'}
-                      </div>
-                      <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: '1.4' }}>{msg.message}</div>
-                    </div>
-                  );
-                })
-              )}
-              <div ref={chatBottomRef} />
-            </div>
-
-            <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="اكتب رسالتك للمحققين..."
-                value={newMessageText}
-                onChange={(e) => setNewMessageText(e.target.value)}
-                maxLength={300}
-                style={{ flex: 1 }}
-              />
-              <button type="submit" className="btn btn-primary btn-sm" disabled={sendingMsg || !newMessageText.trim()}>
-                إرسال 📩
-              </button>
-            </form>
-          </div>
-        )}
+        {/* Voice Chat */}
+        <VoiceChat roomId={roomId} userId={user?.id} players={players} />
 
         {/* Phase: STARTING */}
         {room?.status === 'starting' && (
