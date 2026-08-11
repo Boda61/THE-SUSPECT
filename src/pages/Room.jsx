@@ -957,6 +957,12 @@ export default function Room() {
                 </div>
               )}
 
+              {/* Quick How to Investigate Guidance Banner */}
+              <div style={{ padding: '0.75rem 1rem', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 'var(--radius-md)', marginBottom: '1.25rem', fontSize: '0.825rem', color: 'var(--text-main)', lineHeight: '1.5' }}>
+                <strong style={{ color: 'var(--primary)', display: 'block', marginBottom: '0.2rem' }}>💡 كيف تحقّق في هذه القضية؟</strong>
+                1. 🔎 <strong>فتّش مسرح الجريمة</strong> لاكتشاف أدلة. | 2. 📌 <strong>اربط الأدلة</strong> في اللوحة وفك الألغاز. | 3. 🗣️ <strong>سجّل التناقضات</strong> من أقوال المشتبه بهم. | 4. 📋 <strong>ابنِ ملف الاتهام</strong>.
+              </div>
+
               {/* Progress Bar */}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', padding: '0.6rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
                 <span>🔍 أماكن مُفتشة: <strong>{investigationProgress.searched_locations?.length || 0}/{(activeCase.locations || []).length}</strong></span>
