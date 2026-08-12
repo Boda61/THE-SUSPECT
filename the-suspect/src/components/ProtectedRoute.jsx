@@ -5,7 +5,11 @@ export const ProtectedRoute = () => {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return null;
+    return (
+      <div className="loader-container">
+        <div className="spinner"></div>
+      </div>
+    );
   }
 
   if (!user) {
