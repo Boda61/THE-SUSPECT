@@ -1,7 +1,13 @@
-export const CASES = [
+﻿export const CASES = [
   {
     id: 'case-coffee',
     secret_word: 'القهوة',
+    undercover_word: 'الشاي',
+    undercover_hints: [
+      'شيء بيتشرب دايماً الصبح أو بعد الأكل',
+      'مرتبط بالمزاج والقعدة مع أصحابك',
+      'في منه سخن وساعات بيتحط عليه نعناع أو لبن'
+    ],
     title: 'سر لغز المشروب السحري',
     description: 'شيء يومي مرتبط بالمزاج والتركيز، في ناس مبتعرفش تبدأ يومها من غيره ونسبة كبيرة من الشعب بتعشقه.',
     difficulty: 'متوسط',
@@ -9,7 +15,7 @@ export const CASES = [
       { id: 'loc-kitchen', name: 'المطبخ', icon: '🍳', description: 'في أركان المطبخ أسرار كتير... فتش هنا.' },
       { id: 'loc-cafe', name: 'الكافيه', icon: '☕', description: 'مكان تجمع العشاق والأسرار، افتشه بعناية.' },
       { id: 'loc-market', name: 'السوق', icon: '🛒', description: 'من هنا بتبدأ القصة، الرائحة بتنتشر في كل مكان.' },
-      { id: 'loc-office', name: 'مكان العمل', icon: '🏢', description: 'البيئة اللي مفيش محد بيشتغل من غيرها بجد.' },
+      { id: 'loc-office', name: 'مكان العمل', icon: '🏢', description: 'البيئة اللي مفيش محد بيشتغل من غيرها بجد.' }
     ],
     clues: [
       { id: 'c1', title: 'دليل الصحيان', text: 'في ناس مبتقدرش تفتح عينها ولا تبدأ يومها من غير ما تشربها.', difficulty: 'easy', category: 'عادات يومية', location_id: 'loc-kitchen' },
@@ -21,20 +27,20 @@ export const CASES = [
       { id: 'c7', title: 'دليل المصيبة', text: 'لو نزلت نقطة منها على قميص أبيض قبل ما تنزل، يومك باظ رسمي 😂', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-office' },
       { id: 'c8', title: 'دليل الأنواع', text: 'في منها أنواع غالية ومستوردة، وفي أنواع بنعملها في كنزة على الناشف.', difficulty: 'hard', category: 'ثقافة مصرية', location_id: 'loc-market' },
       { id: 'c9', title: 'دليل الثقافة', text: 'طريقتها بتفرق من بلد لبلد، بس عندنا هنا ليها طقوس محدش يفهمها غير عشاقها.', difficulty: 'hard', category: 'ثقافة مصرية', location_id: 'loc-cafe' },
-      { id: 'c10', title: 'دليل السكر', text: 'لو طلبتها من غير سكر، غالبًا اللي قاعد معاك بيبصلك بصلة إنك شخص قاسي ومبتتحبش 😅', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-office' },
+      { id: 'c10', title: 'دليل السكر', text: 'لو طلبتها من غير سكر، غالبًا اللي قاعد معاك بيبصلك بصلة إنك شخص قاسي ومبتتحبش 😅', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-office' }
     ],
     puzzles: [
       {
         id: 'puz-1',
         title: 'شفرة المطبخ السرية',
         hint: 'ده الشيء اللي بيحوّل الماء العادي لـ magic... اسمه في كلمة واحدة بالعربي (كلمة القضية نفسها)',
-        answer: 'القهوة',
-      },
+        answer: 'القهوة'
+      }
     ],
     connections: [
       { id: 'conn-1', title: '🔗 ارتباط الرائحة بالصحيان', clue_ids: ['c1', 'c2'], description: 'الرائحة الطاغية هي السلاح السري اللي بيصحّي الناس كل يوم.' },
       { id: 'conn-2', title: '🔗 ارتباط الكافيه بالإدمان', clue_ids: ['c3', 'c6'], description: 'الكافيه هو المعبد الرسمي لعشاق هذا المشروب — مكان اللقاء والإدمان.' },
-      { id: 'conn-3', title: '🔗 ارتباط الأنواع بالثقافة', clue_ids: ['c8', 'c9'], description: 'تنوع الأنواع والطرق يعكس ثقافة متجذرة وأصيلة لدى الشعب.' },
+      { id: 'conn-3', title: '🔗 ارتباط الأنواع بالثقافة', clue_ids: ['c8', 'c9'], description: 'تنوع الأنواع والطرق يعكس ثقافة متجذرة وأصيلة لدى الشعب.' }
     ],
     interrogations: [
       {
@@ -43,30 +49,23 @@ export const CASES = [
         statements: [
           'أنا بابدأ يومي بشرب حاجة دافية قبل ما أدخل الأوفيس خالص.',
           'مش ممكن أركز في الشغل من غير ما أكمل أول ساعة صح.',
-          'مرتبطة ليا بورقة الصحف الصبح وأخبار البلد.',
+          'مرتبطة ليا بورقة الصحف الصبح وأخبار البلد.'
         ],
         contradictions: [
-          { id: 'contra-1', suspect_id: 'suspect-ahmed', description: 'قال إنه بيبدأ يومه قبل الأوفيس، لكن قبل كده قال مبيصحاش قبل الشغل بساعة!' },
-        ],
-      },
-      {
-        suspect_id: 'suspect-sara',
-        suspect_name: 'سارة — طالبة الجامعة',
-        statements: [
-          'أنا بشرب الحاجة دي بس وقت الامتحانات عشان أذاكر بالليل.',
-          'مبحبش الحاجات السكر أوي، بفضل الخفيف.',
-          'صاحبتي بتجيبلي أحياناً من البرة بأنواع غريبة.',
-        ],
-        contradictions: [
-          { id: 'contra-2', suspect_id: 'suspect-sara', description: 'قالت إنها بتشربها بس وقت الامتحانات، لكن الكافيه قالوا إنها زبون يومي منذ 6 أشهر!' },
-        ],
-      },
-    ],
+          { id: 'contra-1', suspect_id: 'suspect-ahmed', description: 'قال إنه بيبدأ يومه قبل الأوفيس، لكن قبل كده قال مبيصحاش قبل الشغل بساعة!' }
+        ]
+      }
+    ]
   },
-
   {
     id: 'case-phone',
     secret_word: 'الموبايل',
+    undercover_word: 'التلفزيون',
+    undercover_hints: [
+      'شاشة بنقضي قدامها ساعات طويلة يومياً',
+      'بنعرف منه الأخبار وبنتفرج فيه على حاجات تسلينا',
+      'لو شاشته اتكسرت أو قطع شحن/كهرباء بتدايق جداً'
+    ],
     title: 'اختفاء الجهاز الغامض',
     description: 'شيء صغير في حجم الكف، لكنه مسيطر على حياة الناس ومحدش بيقدر يستغنى عنه دقيقة واحدة.',
     difficulty: 'سهل',
@@ -74,7 +73,7 @@ export const CASES = [
       { id: 'loc-bedroom', name: 'غرفة النوم', icon: '🛌', description: 'أول مكان بتشوفه وأول دليل على بداية اليوم.' },
       { id: 'loc-living', name: 'الصالة', icon: '🛋️', description: 'المكان اللي جنب الفيشة، ملتقى أفراد البيت.' },
       { id: 'loc-kitchen', name: 'المطبخ', icon: '🍳', description: 'حوادث سقوط الموبايل في الحوض المائي بتتم هنا!' },
-      { id: 'loc-work', name: 'مكان العمل', icon: '💻', description: 'التركيز بيطير لما الإشعارات تظهر على الشاشة.' },
+      { id: 'loc-work', name: 'مكان العمل', icon: '💻', description: 'التركيز بيطير لما الإشعارات تظهر على الشاشة.' }
     ],
     clues: [
       { id: 'c1', title: 'دليل النوم والصحيان', text: 'أول حاجة بتمسكها لما تصحى من النوم، وآخل حاجة بتشوفها قبل ما تنام.', difficulty: 'easy', category: 'عادات يومية', location_id: 'loc-bedroom' },
@@ -86,19 +85,19 @@ export const CASES = [
       { id: 'c7', title: 'دليل البصمة', text: 'لما البصمة مابتتعرفش على وشك وأنت لسه صاحي من النوم، بتحس بإهانة.', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-bedroom' },
       { id: 'c8', title: 'دليل الوسيلة الشاملة', text: 'زمان كان مجرد وسيلة للاتصال، دلوقتي بقى مفيش حاجة في يومك مابتتمش من خلاله.', difficulty: 'hard', category: 'تطور الزمن', location_id: 'loc-work' },
       { id: 'c9', title: 'دليل العزلة في المجموعة', text: 'الناس بقت تقعد مع بعض في كافيه واحد وكل واحد باصص في شاشته الخاصة.', difficulty: 'hard', category: 'ملاحظات اجتماعية', location_id: 'loc-living' },
-      { id: 'c10', title: 'دليل الـ 1%', text: 'لو البطارية جابت 1% وأنت بره البيت، دقات قلبك بتزيد أسرع من الجري 🏃‍♂️', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-work' },
+      { id: 'c10', title: 'دليل الـ 1%', text: 'لو البطارية جابت 1% وأنت بره البيت، دقات قلبك بتزيد أسرع من الجري 🏃‍♂️', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-work' }
     ],
     puzzles: [
       {
         id: 'puz-phone-1',
         title: 'رمز القفل السري',
         hint: 'اسم الجهاز الصغير اللي في إيدك بالعربي (كلمة القضية)',
-        answer: 'الموبايل',
-      },
+        answer: 'الموبايل'
+      }
     ],
     connections: [
       { id: 'conn-p1', title: '🔗 ارتباط الفيشة بالشاحن', clue_ids: ['c3', 'c5'], description: 'البحث عن الشاحن والفيشة روتين يومي لا ينتهي.' },
-      { id: 'conn-p2', title: '🔗 ارتباط الـ 1% برعب الضياع', clue_ids: ['c2', 'c10'], description: 'نفاد البطارية يسبب حالة من التوتر والذعر الذاتي.' },
+      { id: 'conn-p2', title: '🔗 ارتباط الـ 1% برعب الضياع', clue_ids: ['c2', 'c10'], description: 'نفاد البطارية يسبب حالة من التوتر والذعر الذاتي.' }
     ],
     interrogations: [
       {
@@ -106,17 +105,23 @@ export const CASES = [
         suspect_name: 'كريم — مهندس البرمجيات',
         statements: [
           'أنا بمسك الجهاز ده بس عشان أرود على إيميلات الشغل.',
-          'الشاشة مكسورة من شهر ومغيرتهاش لسّاه.',
+          'الشاشة مكسورة من شهر ومغيرتهاش لسّاه.'
         ],
         contradictions: [
-          { id: 'contra-p1', suspect_id: 'suspect-phone-1', description: 'قال إنه بيفتحه فقط لإيميلات الشغل لكن سجل الاستخدام يظهر 5 ساعات على وسائل التواصل!' },
-        ],
-      },
-    ],
+          { id: 'contra-p1', suspect_id: 'suspect-phone-1', description: 'قال إنه بيفتحه فقط لإيميلات الشغل لكن سجل الاستخدام يظهر 5 ساعات على وسائل التواصل!' }
+        ]
+      }
+    ]
   },
   {
     id: 'case-microbus',
     secret_word: 'المواصلات العامة',
+    undercover_word: 'أوبر والتاكسي',
+    undercover_hints: [
+      'طريقة بنتحرك بيها في شوارع مصر من مكان لمكان',
+      'بيدفع فيها فلوس وساعات بنستنى أو بنركب مع ناس ثانية',
+      'مرتبطة بالزحمة وساعات الذروة والكلام مع السواق'
+    ],
     title: 'رحلة البحث عن الكرسي الأخير',
     description: 'تجربة يومية يعيشها ملايين المصريين، مليانة أحداث ومواقف وحكايات لا تنتهي.',
     difficulty: 'متوسط',
@@ -124,7 +129,7 @@ export const CASES = [
       { id: 'loc-station', name: 'الموقف الرئيسي', icon: '🚌', description: 'من هنا بتبدأ الرحلة والزحمة والخناقات اللطيفة.' },
       { id: 'loc-last-seat', name: 'الكرسي الأخير', icon: '🪑', description: 'مكان الأسرار والمطبات القوية!' },
       { id: 'loc-driver-side', name: 'بجوار السائق', icon: '🚦', description: 'مركز التحكم المالي والمسؤولية الكبرى.' },
-      { id: 'loc-drop-off', name: 'محطة النزول', icon: '📍', description: '"على جنب يا كابتن" بتقال هنا بصوت عالي.' },
+      { id: 'loc-drop-off', name: 'محطة النزول', icon: '📍', description: '"على جنب يا كابتن" بتقال هنا بصوت عالي.' }
     ],
     clues: [
       { id: 'c1', title: 'دليل تعبيرات الشارع', text: 'الكلمة الشائعة هنا هي: "اقفل الباب براحة" أو "على جنب يا كابتن".', difficulty: 'easy', category: 'تعبيرات عامية', location_id: 'loc-drop-off' },
@@ -136,17 +141,23 @@ export const CASES = [
       { id: 'c7', title: 'دليل المطبات', text: 'لو الكرسي الأخير فاضي، بتفكر 10 مرات قبل ما تقعد فيه من حركته.', difficulty: 'hard', category: 'خبرة الشارع', location_id: 'loc-last-seat' },
       { id: 'c8', title: 'دليل حكّام الرحلة', text: 'السائق هو الحاكم الفعلي للرحلة، وهو اللي بحدد المزاج والسرعة والمزيكا.', difficulty: 'hard', category: 'شخصيات الشارع', location_id: 'loc-driver-side' },
       { id: 'c9', title: 'دليل أزمة الفكة', text: 'موقف "مفيش فكة" بيبدأ خناقة درامية لطيفة بين الناس.', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-driver-side' },
-      { id: 'c10', title: 'دليل الانطلاق', text: 'لو حد قال "واحد شغال"، اعرف إن الرحلة هتبدأ حالاً من غير انتظار.', difficulty: 'funny', category: 'مصطلحات الشارع', location_id: 'loc-station' },
+      { id: 'c10', title: 'دليل الانطلاق', text: 'لو حد قال "واحد شغال"، اعرف إن الرحلة هتبدأ حالاً من غير انتظار.', difficulty: 'funny', category: 'مصطلحات الشارع', location_id: 'loc-station' }
     ],
     puzzles: [],
     connections: [
-      { id: 'conn-m1', title: '🔗 ارتباط الأجرة بكرسي السائق', clue_ids: ['c2', 'c4'], description: 'جمع الأجرة وتوزيع الباقي يقع على عاتق هذا الراكب المسكين.' },
+      { id: 'conn-m1', title: '🔗 ارتباط الأجرة بكرسي السائق', clue_ids: ['c2', 'c4'], description: 'جمع الأجرة وتوزيع الباقي يقع على عاتق هذا الراكب المسكين.' }
     ],
-    interrogations: [],
+    interrogations: []
   },
   {
     id: 'case-summer',
     secret_word: 'الساحل والصيف',
+    undercover_word: 'رأس البر والجمصة',
+    undercover_hints: [
+      'سفرية بنسافرها في الحر عشان نبل بطننا في المية',
+      'مرتبطة بالصحاب والشواطئ والأكل الشارع',
+      'كل الناس بتجهز لها شنط وصان بلوك من بدري'
+    ],
     title: 'لغز المهرجان الصيفي',
     description: 'موسم ومكان مرتبط بالفرفشة، السفر، الزحمة، وتضييع الفلوس في أسرع وقت ممكن.',
     difficulty: 'صعب',
@@ -154,7 +165,7 @@ export const CASES = [
       { id: 'loc-beach', name: 'الشاطئ والبحر', icon: '🏖️', description: 'الشمس المباشرة، الصان بلوك، وألوان البشرة المختلفة.' },
       { id: 'loc-hotel', name: 'الفندق والشاليه', icon: '🏨', description: 'تخطيط السفريات اللي نص الجروب بيلغيه في الآخر.' },
       { id: 'loc-walk', name: 'الممشى السياحي', icon: '🌅', description: 'المحلات الغالية، النظارات الشمسية، والاستوريز.' },
-      { id: 'loc-party', name: 'منطقة الحفلات', icon: '🎶', description: 'المهرجانات الصيفية والمصاريف الصاروخية!' },
+      { id: 'loc-party', name: 'منطقة الحفلات', icon: '🎶', description: 'المهرجانات الصيفية والمصاريف الصاروخية!' }
     ],
     clues: [
       { id: 'c1', title: 'دليل الهروب الصيفي', text: 'كل الناس بتستناه طول السنة عشان تهرب من حر الصيف والروتين.', difficulty: 'easy', category: 'إجازات', location_id: 'loc-beach' },
@@ -166,12 +177,67 @@ export const CASES = [
       { id: 'c7', title: 'دليل ألوان البشرة', text: 'كل واحد بيرجع منه بلون بشرة مختلف ونظارة شمس جديدة.', difficulty: 'easy', category: 'مظهر وخروج', location_id: 'loc-beach' },
       { id: 'c8', title: 'دليل صخب الحفلات', text: 'لو عملت حادثة بسيطة هناك، بتلاقي الأغاني شغالة بصوت عالي برضه.', difficulty: 'hard', category: 'أجواء شبابية', location_id: 'loc-party' },
       { id: 'c9', title: 'دليل أسعار الصيف', text: 'الأسعار هناك بتخليك تتأكد إن الجنيه اتغيرت قيمته تماماً 😂', difficulty: 'funny', category: 'مواقف مضحكة', location_id: 'loc-walk' },
-      { id: 'c10', title: 'دليل الاستوري الصيفي', text: 'كل الصور اللي بتنزل منه على الاستوري بتبقى برعايته وشعاره الصيفي.', difficulty: 'funny', category: 'سوشيال ميديا', location_id: 'loc-party' },
+      { id: 'c10', title: 'دليل الاستوري الصيفي', text: 'كل الصور اللي بتنزل منه على الاستوري بتبقى برعايته وشعاره الصيفي.', difficulty: 'funny', category: 'سوشيال ميديا', location_id: 'loc-party' }
     ],
     puzzles: [],
     connections: [],
-    interrogations: [],
+    interrogations: []
+  },
+  {
+    id: 'case-koshary',
+    secret_word: 'الكشري',
+    undercover_word: 'الفتة والمحشي',
+    undercover_hints: [
+      'أكلة شعبية مصرية أصلية كل الناس بتحبها',
+      'مرتبطة بالصلصة، الدقة، والبصل المقرمش',
+      'بتتاكل في أطباق أو علب فوم مع معلقة بلاستيك'
+    ],
+    title: 'سر سرق الدقة والصلصة',
+    description: 'أكلتنا القومية العظيمة، تجمع المكرونة مع الرز والعدس والصلصة الشديدة.. مين يقدر يقاومها؟',
+    difficulty: 'سهل',
+    locations: [
+      { id: 'loc-koshary-shop', name: 'مطعم الكشري', icon: '🍲', description: 'رائحة الدقة والصلصة تحبس الأنفاس!' },
+      { id: 'loc-kitchen-k', name: 'مطبخ التجهيز', icon: '🧅', description: 'أطنان من البصل والعدس تُجهز هنا يومياً.' }
+    ],
+    clues: [
+      { id: 'c1', title: 'دليل الدقة والصلصة', text: 'لو زودت الدقة والصلصة، طعم الطبق بيبقى خطير جداً.', difficulty: 'easy', category: 'أكلات مصرية', location_id: 'loc-koshary-shop' },
+      { id: 'c2', title: 'دليل البصل المقرمش', text: 'البصل المقرمش ده هو الكنز الحقيقي اللي بنتخانق عليه فوق الطبق.', difficulty: 'easy', category: 'أسرار الأكل', location_id: 'loc-kitchen-k' }
+    ],
+    puzzles: [],
+    connections: [],
+    interrogations: []
+  },
+  {
+    id: 'case-derby',
+    secret_word: 'مباراة القمة والديربي',
+    undercover_word: 'مباراة المنتخب والدوري',
+    undercover_hints: [
+      'حدث كروي ناري بيجمع بين غريمين تقليديين في مصر',
+      'الشارع والقهاوي بتتقسم نصين أحمر وأبيض',
+      'التحفيل والهزار بيستمر أسبوع كامل بعد الماتش'
+    ],
+    title: 'لغز صافرة الديربي الكبير',
+    description: 'المباراة التي يترقبها الشارع المصري كله، اهلي وزمالك وتحفيل لا ينتهي.',
+    difficulty: 'متوسط',
+    locations: [
+      { id: 'loc-stadium', name: 'استاد القاهرة', icon: '⚽', description: 'أجواء التشجيع والهتافات النارية.' },
+      { id: 'loc-ahwa', name: 'القهوة البلدية', icon: '☕', description: 'الشاشات الكبيرة والمشروبات مع كل هجمة.' }
+    ],
+    clues: [
+      { id: 'c1', title: 'دليل تقسيم الشارع', text: 'الشارع والقهاوي بتتقسم أحمر وأبيض مع كل هدف.', difficulty: 'easy', category: 'كرة قدم', location_id: 'loc-ahwa' },
+      { id: 'c2', title: 'دليل التحفيل الصباحي', text: 'تأثير المباراة بيستمر في شغل وصحوبية تاني يوم بالتحفيل.', difficulty: 'medium', category: 'مواقف شعبية', location_id: 'loc-stadium' }
+    ],
+    puzzles: [],
+    connections: [],
+    interrogations: []
   }
+];
+
+export const ACTION_CARDS = [
+  { id: 'card-lie-detector', name: '🕵️ كاشف الكذب السريع', description: 'اختر لاعباً، واسأله سؤالاً يجيب عنه بـ "نعم" أو "لا" فقط!', icon: '⚡' },
+  { id: 'card-objection', name: '🛑 كارت الاعتراض المباشر', description: 'إمكانية الاعتراض فوراً وفتح مواجهة مباشرة لمدة 20 ثانية مع المتهم!', icon: '🛑' },
+  { id: 'card-swap-hint', name: '🎭 كارت تمويه الشكوك', description: 'اسمك يظهر عليه شارة "مشتبه محتمل" لزيادة الإثارة والتمويه!', icon: '🎭' },
+  { id: 'card-word-clue', name: '🔍 تلميح سرّي مجاني', description: 'تحصل على تلميح جديد يساعدك على معرفة الكلمة الأصلية.', icon: '💡' }
 ];
 
 export const getRandomCase = () => {

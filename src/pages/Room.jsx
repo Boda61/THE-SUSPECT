@@ -5,6 +5,10 @@ import { useAuth } from '../hooks/useAuth';
 import { CASES } from '../data/cases';
 import SuspectHQ from '../components/SuspectHQ';
 import VoiceChat from '../components/VoiceChat';
+import UndercoverMode from '../components/UndercoverMode';
+import ObjectionBuzzer from '../components/ObjectionBuzzer';
+import QuickReactions from '../components/QuickReactions';
+import { playObjectionSound, playVictorySound } from '../utils/soundEffects';
 
 export default function Room() {
   const { roomCode: roomId } = useParams();
@@ -13,6 +17,9 @@ export default function Room() {
 
   const [room, setRoom] = useState(null);
   const [players, setPlayers] = useState([]);
+  const [gameMode, setGameMode] = useState('undercover'); // 'undercover' | 'classic'
+  const [activeBuzzerState, setActiveBuzzerState] = useState(false);
+  const [activeReactions, setActiveReactions] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -248,6 +255,15 @@ export default function Room() {
             });
           } else if (type === 'chat_message') {
             fetchMessages();
+          } else if (type === 'objection_triggered') {
+            setActiveBuzzerState(true);
+            playObjectionSound();
+          } else if (type === 'objection_closed') {
+            setActiveBuzzerState(false);
+          } else if (type === 'game_mode_changed' && payload.payload.mode) {
+            setGameMode(payload.payload.mode);
+          } else if (type === 'quick_reaction' && payload.payload.reaction) {
+            setActiveReactions((prev) => [...prev, payload.payload.reaction]);
           }
         }
       })
@@ -269,6 +285,33 @@ export default function Room() {
       event: 'room_action',
       payload,
     });
+  };
+
+  const handleTriggerObjection = () => {
+    setActiveBuzzerState(true);
+    playObjectionSound();
+    broadcastRoomAction({ type: 'objection_triggered' });
+  };
+
+  const handleCloseObjection = () => {
+    setActiveBuzzerState(false);
+    broadcastRoomAction({ type: 'objection_closed' });
+  };
+
+  const handleSelectGameMode = (mode) => {
+    setGameMode(mode);
+    broadcastRoomAction({ type: 'game_mode_changed', mode });
+  };
+
+  const handleSendReaction = (reaction) => {
+    const me = players.find(p => p.user_id === user?.id);
+    const item = {
+      ...reaction,
+      userName: me?.display_name || 'لاعب',
+      id: Math.random(),
+    };
+    setActiveReactions((prev) => [...prev, item]);
+    broadcastRoomAction({ type: 'quick_reaction', reaction: item });
   };
 
   // Dedicated realtime chat channel
@@ -935,6 +978,11 @@ export default function Room() {
         {/* Voice Chat */}
         <VoiceChat roomId={roomId} userId={user?.id} players={players} />
 
+        {/* Quick Reactions Bar */}
+        <div style={{ marginTop: '0.75rem', marginBottom: '1.25rem' }}>
+          <QuickReactions onSendReaction={handleSendReaction} activeReactions={activeReactions} />
+        </div>
+
         {/* Phase: STARTING */}
         {room?.status === 'starting' && (
           <div className="cinematic-container">
@@ -980,10 +1028,43 @@ export default function Room() {
           </div>
         )}
 
-        {/* Phase: INVESTIGATION — Interactive Detective HQ */}
+        {/* Phase: INVESTIGATION — Interactive Gameplay */}
         {(room?.status === 'investigation' || room?.status === 'in_game') && activeCase && (
-          <div className="lobby-body">
-            {myRole === 'suspect' ? (
+          <div className="lobby-body space-y-6">
+            {/* Live Objection & Suspicion Meter */}
+            <ObjectionBuzzer
+              players={players}
+              currentUserId={user?.id}
+              onBuzzerTriggered={handleTriggerObjection}
+              activeBuzzerState={activeBuzzerState}
+              onCloseBuzzer={handleCloseObjection}
+            />
+
+            {/* Mode Selector Toggle */}
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '1rem' }}>
+              <button
+                onClick={() => setGameMode('undercover')}
+                className={`btn btn-sm ${gameMode === 'undercover' ? 'btn-primary' : 'btn-ghost'}`}
+              >
+                🔥 طور المشتبه الخفي (Undercover Pitch)
+              </button>
+              <button
+                onClick={() => setGameMode('classic')}
+                className={`btn btn-sm ${gameMode === 'classic' ? 'btn-primary' : 'btn-ghost'}`}
+              >
+                🔍 ملف الأدلة الكلاسيكي (Detective HQ)
+              </button>
+            </div>
+
+            {gameMode === 'undercover' ? (
+              <UndercoverMode
+                caseData={activeCase}
+                myRole={myRole}
+                players={players}
+                currentUserId={user?.id}
+                onBuzzerTrigger={handleTriggerObjection}
+              />
+            ) : myRole === 'suspect' ? (
               <SuspectHQ roomId={roomId} currentRound={room?.current_round || 1} />
             ) : (
             <div className="glass-card case-card">
@@ -1608,8 +1689,34 @@ export default function Room() {
             </div>
 
             {isHost && (
-              <div className="host-controls glass-card">
-                <h3 className="section-title">تحكمات المضيف</h3>
+              <div className="host-controls glass-card space-y-4">
+                <h3 className="section-title">🎮 اختر طور اللعب وتجهيزات المضيف</h3>
+
+                {/* Game Mode Selection Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+                  <button
+                    onClick={() => handleSelectGameMode('undercover')}
+                    className={`btn ${gameMode === 'undercover' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ textAlign: 'right', flexDirection: 'column', alignItems: 'flex-start', padding: '0.85rem 1rem', border: gameMode === 'undercover' ? '2px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    <span style={{ fontSize: '1rem', fontWeight: 800, color: '#f59e0b' }}>🔥 طور المشتبه الخفي (Undercover Speed)</span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.3rem', lineHeight: '1.4' }}>
+                      وصف خاطف، كروت كاشف الكذب، تمثيل وسرعة مواجهة. (موصى به 🎉)
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => handleSelectGameMode('classic')}
+                    className={`btn ${gameMode === 'classic' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ textAlign: 'right', flexDirection: 'column', alignItems: 'flex-start', padding: '0.85rem 1rem', border: gameMode === 'classic' ? '2px solid var(--primary)' : '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--primary)' }}>🔍 طور التحقيق الكلاسيكي (Classic Detective)</span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.3rem', lineHeight: '1.4' }}>
+                      تفتيش أماكن الجريمة وفحص الوثائق والألغاز المعقدة.
+                    </span>
+                  </button>
+                </div>
+
                 <p className="host-hint">
                   ابدأ الجولة {currentRoundNumber} عندما يكون كل المحققين جاهزين.
                 </p>

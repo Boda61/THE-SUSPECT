@@ -231,6 +231,62 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Game Modes Showcase */}
+        <div style={{ marginTop: '2.5rem' }}>
+          <h3 style={{ textAlign: 'center', fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.4rem', color: 'var(--text-primary)' }}>
+            🎮 أطوار اللعب المتاحة
+          </h3>
+          <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+            في كل غرفة تحقيق، قائد اللعبة يختار الطور المناسب للسهرة
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+
+            {/* Undercover Speed Mode */}
+            <div className="glass-card" style={{ padding: '1.25rem', borderTop: '3px solid #f59e0b', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: '-10px', right: '-10px', fontSize: '4rem', opacity: 0.07 }}>🔥</div>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🕵️ 🔥</div>
+              <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.4rem', color: '#f59e0b' }}>طور المشتبه الخفي</h4>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', lineHeight: 1.5 }}>
+                لاعب واحد عنده كلمة <strong style={{ color: 'var(--text-primary)' }}>مختلفة</strong> ومش عارف! المهمة تمرر بدون ما يكشفك الباقيين.
+              </p>
+              <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem' }}>⏱ 30 ثانية للوصف</span>
+                <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem' }}>🏃‍♂️ فرصة الهروب</span>
+                <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem' }}>🎴 كروت أكشن</span>
+              </div>
+            </div>
+
+            {/* Objection Buzzer Mode */}
+            <div className="glass-card" style={{ padding: '1.25rem', borderTop: '3px solid #ef4444', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: '-10px', right: '-10px', fontSize: '4rem', opacity: 0.07 }}>🛑</div>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🛑 ⚡</div>
+              <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.4rem', color: '#ef4444' }}>طور الاعتراض الناري</h4>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', lineHeight: 1.5 }}>
+                أي لاعب يشك في المتهم يضغط <strong style={{ color: 'var(--text-primary)' }}>زر الاعتراض</strong> ويفتح مواجهة مباشرة لمدة 20 ثانية حامية!
+              </p>
+              <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem' }}>🎯 عداد الشك المباشر</span>
+                <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem' }}>💬 تفاعلات لحظية</span>
+              </div>
+            </div>
+
+            {/* Classic Detective Mode */}
+            <div className="glass-card" style={{ padding: '1.25rem', borderTop: '3px solid #6366f1', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: '-10px', right: '-10px', fontSize: '4rem', opacity: 0.07 }}>🔎</div>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🔎 📋</div>
+              <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.4rem', color: '#818cf8' }}>طور المحقق الكلاسيكي</h4>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', lineHeight: 1.5 }}>
+                تحقيق بالكتاب! أدلة، ألغاز، اتهامات، واستجوابات مع الشهود. الاستراتيجية والذكاء هما سلاحك.
+              </p>
+              <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <span style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem' }}>🗺️ خريطة القضية</span>
+                <span style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem' }}>🧩 ألغاز وأسرار</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
         {/* How to Play Card Banner */}
         <div className="glass-card" style={{ marginTop: '2rem', padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
