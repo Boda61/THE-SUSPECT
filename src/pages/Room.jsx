@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
-import { CASES } from '../data/cases';
+import { getRandomCase } from '../data/cases';
 import SuspectHQ from '../components/SuspectHQ';
 import VoiceChat from '../components/VoiceChat';
 import UndercoverMode from '../components/UndercoverMode';
@@ -49,7 +49,7 @@ export default function Room() {
   const chatBottomRef = useRef(null);
 
   const [myRole, setMyRole] = useState(null);
-  const [activeCase] = useState(CASES[0]);
+  const [activeCase] = useState(() => getRandomCase());
 
   // Interactive Investigation state
   const [activeTab, setActiveTab] = useState('scene');
@@ -1040,21 +1040,6 @@ export default function Room() {
               onCloseBuzzer={handleCloseObjection}
             />
 
-            {/* Mode Selector Toggle */}
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '1rem' }}>
-              <button
-                onClick={() => setGameMode('undercover')}
-                className={`btn btn-sm ${gameMode === 'undercover' ? 'btn-primary' : 'btn-ghost'}`}
-              >
-                🔥 طور المشتبه الخفي (Undercover Pitch)
-              </button>
-              <button
-                onClick={() => setGameMode('classic')}
-                className={`btn btn-sm ${gameMode === 'classic' ? 'btn-primary' : 'btn-ghost'}`}
-              >
-                🔍 ملف الأدلة الكلاسيكي (Detective HQ)
-              </button>
-            </div>
 
             {gameMode === 'undercover' ? (
               <UndercoverMode
