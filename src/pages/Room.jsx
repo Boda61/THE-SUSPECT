@@ -80,6 +80,60 @@ export default function Room() {
   const channelRef = useRef(null);
   const chatChannelRef = useRef(null);
 
+  // Safe RPC wrapper — silently ignores 404/not-found errors for optional RPCs
+  const safeRpc = useCallback(async (rpcName, params = {}) => {
+    try {
+      const { data, error } = await supabase.rpc(rpcName, params);
+      if (error) {
+        const msg = String(error.message || error.code || '');
+        if (msg.includes('PGRST202') || msg.includes('not found') || msg.includes('404')) {
+          return null;
+        }
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      const msg = String(err?.message || err?.code || '');
+      if (msg.includes('PGRST202') || msg.includes('not found') || msg.includes('404')) {
+        return null;
+      }
+      throw err;
+    }
+  }, []);
+
+  // Safe RPC wrapper — silently ignores 404/not-found errors for optional RPCs
+  const safeRpc = useCallback(async (rpcName, params = {}) => {
+    try {
+      const { data, error } = await supabase.rpc(rpcName, params);
+      if (error) {
+        const message = String(error.message || '');
+        if (
+          message.includes('does not exist') ||
+          message.includes('not found') ||
+          message.includes('404') ||
+          message.includes('Bad Request') ||
+          message.includes('Failed to fetch')
+        ) {
+          return null;
+        }
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      const message = String(err?.message || err || '');
+      if (
+        message.includes('does not exist') ||
+        message.includes('not found') ||
+        message.includes('404') ||
+        message.includes('Bad Request') ||
+        message.includes('Failed to fetch')
+      ) {
+        return null;
+      }
+      throw err;
+    }
+  }, []);
+
   const safeRpc = useCallback(async (rpcName, params = {}) => {
     try {
       const { data, error } = await supabase.rpc(rpcName, params);
@@ -545,9 +599,8 @@ export default function Room() {
 
   const handleAdvanceToInvestigation = async () => {
     try {
-      // set_phase_timer sets phase_started_at server-side (host only)
-      const timerData = await safeRpc('set_phase_timer', { p_room_id: roomId });
-      const phaseStarted = timerData || new Date().toISOString();
+      // set_phase_timer is optional — silently falls back to client timestamp if RPC not yet deployed
+      const phaseStarted = (await safeRpc('set_phase_timer', { p_room_id: roomId })) || new Date().toISOString();
 
       const { error: rpcError } = await supabase.rpc('advance_room_status', {
         p_room_id: roomId,
