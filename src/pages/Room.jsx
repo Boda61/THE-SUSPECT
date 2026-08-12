@@ -80,21 +80,51 @@ export default function Room() {
   const channelRef = useRef(null);
   const chatChannelRef = useRef(null);
 
+  const safeRpc = useCallback(async (rpcName, params = {}) => {
+    try {
+      const { data, error } = await supabase.rpc(rpcName, params);
+      if (error) {
+        const message = String(error.message || '');
+        if (
+          message.includes('does not exist') ||
+          message.includes('not found') ||
+          message.includes('404') ||
+          message.includes('Bad Request') ||
+          message.includes('Failed to fetch')
+        ) {
+          return null;
+        }
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      const message = String(err?.message || err || '');
+      if (
+        message.includes('does not exist') ||
+        message.includes('not found') ||
+        message.includes('404') ||
+        message.includes('Bad Request') ||
+        message.includes('Failed to fetch')
+      ) {
+        return null;
+      }
+      throw err;
+    }
+  }, []);
+
   const fetchSuspicionScores = useCallback(async () => {
     if (!roomId) return;
-    const { data } = await supabase.rpc('get_room_suspicion_scores', { p_room_id: roomId });
+    const data = await safeRpc('get_room_suspicion_scores', { p_room_id: roomId });
     if (data) setSuspicionScores(data);
-  }, [roomId]);
+  }, [roomId, safeRpc]);
 
   const fetchLeaderboard = useCallback(async () => {
     if (!roomId) return;
-    const { data, error: lbError } = await supabase.rpc('get_room_leaderboard', {
-      p_room_id: roomId,
-    });
-    if (!lbError && data) {
+    const data = await safeRpc('get_room_leaderboard', { p_room_id: roomId });
+    if (data) {
       setLeaderboard(data);
     }
-  }, [roomId]);
+  }, [roomId, safeRpc]);
 
   const fetchMessages = useCallback(async () => {
     if (!roomId) return;
@@ -108,34 +138,14 @@ export default function Room() {
 
   const fetchVotingSummary = useCallback(async () => {
     if (!roomId) return;
-    const { data } = await supabase.rpc('get_room_votes_summary', { p_room_id: roomId }).catch(() => ({ data: null }));
+    const data = await safeRpc('get_room_votes_summary', { p_room_id: roomId });
     if (data) {
       setVotingSummary(data);
       if (data.my_vote_suspect_id) {
         setMyVotedSuspectId(data.my_vote_suspect_id);
       }
     }
-  }, [roomId]);
-
-  const safeRpc = useCallback(async (rpcName, params = {}) => {
-    try {
-      const { data, error } = await supabase.rpc(rpcName, params);
-      if (error) {
-        const message = String(error.message || '');
-        if (message.includes('does not exist') || message.includes('not found') || message.includes('404') || message.includes('Bad Request')) {
-          return null;
-        }
-        throw error;
-      }
-      return data;
-    } catch (err) {
-      const message = String(err?.message || err || '');
-      if (message.includes('does not exist') || message.includes('not found') || message.includes('404') || message.includes('Bad Request')) {
-        return null;
-      }
-      throw err;
-    }
-  }, []);
+  }, [roomId, safeRpc]);
 
   useEffect(() => {
     if (!user || !roomId) return;
