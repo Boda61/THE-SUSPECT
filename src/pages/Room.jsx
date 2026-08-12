@@ -108,7 +108,7 @@ export default function Room() {
 
   const fetchVotingSummary = useCallback(async () => {
     if (!roomId) return;
-    const { data } = await supabase.rpc('get_room_votes_summary', { p_room_id: roomId });
+    const { data } = await supabase.rpc('get_room_votes_summary', { p_room_id: roomId }).catch(() => ({ data: null }));
     if (data) {
       setVotingSummary(data);
       if (data.my_vote_suspect_id) {
@@ -117,6 +117,26 @@ export default function Room() {
     }
   }, [roomId]);
 
+  const safeRpc = useCallback(async (rpcName, params = {}) => {
+    try {
+      const { data, error } = await supabase.rpc(rpcName, params);
+      if (error) {
+        const message = String(error.message || '');
+        if (message.includes('does not exist') || message.includes('not found') || message.includes('404') || message.includes('Bad Request')) {
+          return null;
+        }
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      const message = String(err?.message || err || '');
+      if (message.includes('does not exist') || message.includes('not found') || message.includes('404') || message.includes('Bad Request')) {
+        return null;
+      }
+      throw err;
+    }
+  }, []);
+
   useEffect(() => {
     if (!user || !roomId) return;
     let cancelled = false;
@@ -124,7 +144,7 @@ export default function Room() {
     const loadRoom = async () => {
       const { data: roomData, error: roomError } = await supabase
         .from('rooms')
-        .select('id, code, host_id, status, current_round, accusation_data, case_id, phase_started_at')
+        .select('id, code, host_id, status, current_round, accusation_data')
         .eq('id', roomId)
         .single();
 
@@ -398,7 +418,7 @@ export default function Room() {
       try {
         const { data: latestRoom } = await supabase
           .from('rooms')
-          .select('id, code, host_id, status, current_round, accusation_data, case_id, phase_started_at')
+          .select('id, code, host_id, status, current_round, accusation_data')
           .eq('id', roomId)
           .single();
 
@@ -439,13 +459,13 @@ export default function Room() {
 
     const fetchMyRole = async () => {
       try {
-        const [roleResult, wordResult] = await Promise.all([
-          supabase.rpc('get_my_role', { p_room_id: roomId }),
-          supabase.rpc('get_my_secret_word', { p_room_id: roomId }),
+        const [roleData, wordData] = await Promise.all([
+          safeRpc('get_my_role', { p_room_id: roomId }),
+          safeRpc('get_my_secret_word', { p_room_id: roomId }),
         ]);
         if (cancelled) return;
-        if (!roleResult.error && roleResult.data) setMyRole(roleResult.data);
-        if (!wordResult.error && wordResult.data) setMySecretWord(wordResult.data);
+        if (roleData) setMyRole(roleData);
+        if (wordData) setMySecretWord(wordData);
       } catch (err) {
         console.error('[fetchMyRole]', err);
       }
@@ -453,7 +473,7 @@ export default function Room() {
 
     fetchMyRole();
     return () => { cancelled = true; };
-  }, [roomId, user, room?.status]);
+  }, [roomId, user, room?.status, safeRpc]);
 
   // Resolve activeCase from room.case_id
   useEffect(() => {
@@ -516,7 +536,7 @@ export default function Room() {
   const handleAdvanceToInvestigation = async () => {
     try {
       // set_phase_timer sets phase_started_at server-side (host only)
-      const { data: timerData } = await supabase.rpc('set_phase_timer', { p_room_id: roomId });
+      const timerData = await safeRpc('set_phase_timer', { p_room_id: roomId });
       const phaseStarted = timerData || new Date().toISOString();
 
       const { error: rpcError } = await supabase.rpc('advance_room_status', {
