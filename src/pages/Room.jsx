@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
-import { getRandomCase } from '../data/cases';
+import { CASES } from '../data/cases';
 import SuspectHQ from '../components/SuspectHQ';
 import VoiceChat from '../components/VoiceChat';
 import UndercoverMode from '../components/UndercoverMode';
@@ -49,7 +49,10 @@ export default function Room() {
   const chatBottomRef = useRef(null);
 
   const [myRole, setMyRole] = useState(null);
-  const [activeCase] = useState(() => getRandomCase());
+  const [mySecretWord, setMySecretWord] = useState(null);
+  const [activeCase, setActiveCase] = useState(null);
+  const [objectionStartedAt, setObjectionStartedAt] = useState(null);
+  const [suspicionScores, setSuspicionScores] = useState({});
 
   // Interactive Investigation state
   const [activeTab, setActiveTab] = useState('scene');
@@ -76,6 +79,12 @@ export default function Room() {
 
   const channelRef = useRef(null);
   const chatChannelRef = useRef(null);
+
+  const fetchSuspicionScores = useCallback(async () => {
+    if (!roomId) return;
+    const { data } = await supabase.rpc('get_room_suspicion_scores', { p_room_id: roomId });
+    if (data) setSuspicionScores(data);
+  }, [roomId]);
 
   const fetchLeaderboard = useCallback(async () => {
     if (!roomId) return;
@@ -115,7 +124,7 @@ export default function Room() {
     const loadRoom = async () => {
       const { data: roomData, error: roomError } = await supabase
         .from('rooms')
-        .select('id, code, host_id, status, current_round, accusation_data')
+        .select('id, code, host_id, status, current_round, accusation_data, case_id, phase_started_at')
         .eq('id', roomId)
         .single();
 
@@ -237,13 +246,14 @@ export default function Room() {
       )
       .on('broadcast', { event: 'room_action' }, (payload) => {
         if (payload?.payload) {
-          const { status, current_round, accusation_data, fetchLb, fetchVotes, type } = payload.payload;
+          const { status, current_round, accusation_data, fetchLb, fetchVotes, type, phase_started_at } = payload.payload;
           setRoom((prev) => {
             if (!prev) return prev;
             const updated = { ...prev };
             if (status) updated.status = status;
             if (current_round !== undefined) updated.current_round = current_round;
             if (accusation_data !== undefined) updated.accusation_data = accusation_data;
+            if (phase_started_at !== undefined) updated.phase_started_at = phase_started_at;
             return updated;
           });
           if (fetchLb) fetchLeaderboard();
@@ -257,13 +267,20 @@ export default function Room() {
             fetchMessages();
           } else if (type === 'objection_triggered') {
             setActiveBuzzerState(true);
+            setObjectionStartedAt(payload.payload.started_at || new Date().toISOString());
             playObjectionSound();
           } else if (type === 'objection_closed') {
             setActiveBuzzerState(false);
+            setObjectionStartedAt(null);
           } else if (type === 'game_mode_changed' && payload.payload.mode) {
             setGameMode(payload.payload.mode);
           } else if (type === 'quick_reaction' && payload.payload.reaction) {
             setActiveReactions((prev) => [...prev, payload.payload.reaction]);
+          } else if (type === 'suspicion_update' && payload.payload.target_id) {
+            setSuspicionScores((prev) => ({
+              ...prev,
+              [payload.payload.target_id]: payload.payload.score,
+            }));
           }
         }
       })
@@ -288,13 +305,17 @@ export default function Room() {
   };
 
   const handleTriggerObjection = () => {
+    if (activeBuzzerState) return; // منع duplicate objection
+    const startedAt = new Date().toISOString();
     setActiveBuzzerState(true);
+    setObjectionStartedAt(startedAt);
     playObjectionSound();
-    broadcastRoomAction({ type: 'objection_triggered' });
+    broadcastRoomAction({ type: 'objection_triggered', started_at: startedAt });
   };
 
   const handleCloseObjection = () => {
     setActiveBuzzerState(false);
+    setObjectionStartedAt(null);
     broadcastRoomAction({ type: 'objection_closed' });
   };
 
@@ -312,6 +333,23 @@ export default function Room() {
     };
     setActiveReactions((prev) => [...prev, item]);
     broadcastRoomAction({ type: 'quick_reaction', reaction: item });
+  };
+
+  const handleAdjustSuspicion = async (targetUserId, delta) => {
+    try {
+      const { data, error } = await supabase.rpc('update_suspicion_score', {
+        p_room_id: roomId,
+        p_target_id: targetUserId,
+        p_delta: delta,
+      });
+      if (error) { console.error('[update_suspicion_score]', error); return; }
+      if (data) {
+        setSuspicionScores((prev) => ({ ...prev, [data.target_id]: data.score }));
+        broadcastRoomAction({ type: 'suspicion_update', target_id: data.target_id, score: data.score });
+      }
+    } catch (err) {
+      console.error('[handleAdjustSuspicion]', err);
+    }
   };
 
   // Dedicated realtime chat channel
@@ -360,7 +398,7 @@ export default function Room() {
       try {
         const { data: latestRoom } = await supabase
           .from('rooms')
-          .select('id, code, host_id, status, current_round, accusation_data')
+          .select('id, code, host_id, status, current_round, accusation_data, case_id, phase_started_at')
           .eq('id', roomId)
           .single();
 
@@ -394,19 +432,20 @@ export default function Room() {
     return () => clearInterval(interval);
   }, [roomId, user, loading]);
 
-  // Fetch private role whenever room enters game state
+  // Fetch private role + secret word + active case whenever room enters game state
   useEffect(() => {
     if (!roomId || !user || room?.status === 'waiting') return;
     let cancelled = false;
 
     const fetchMyRole = async () => {
       try {
-        const { data, error: roleError } = await supabase.rpc('get_my_role', {
-          p_room_id: roomId,
-        });
-        if (!cancelled && !roleError && data) {
-          setMyRole(data);
-        }
+        const [roleResult, wordResult] = await Promise.all([
+          supabase.rpc('get_my_role', { p_room_id: roomId }),
+          supabase.rpc('get_my_secret_word', { p_room_id: roomId }),
+        ]);
+        if (cancelled) return;
+        if (!roleResult.error && roleResult.data) setMyRole(roleResult.data);
+        if (!wordResult.error && wordResult.data) setMySecretWord(wordResult.data);
       } catch (err) {
         console.error('[fetchMyRole]', err);
       }
@@ -415,6 +454,13 @@ export default function Room() {
     fetchMyRole();
     return () => { cancelled = true; };
   }, [roomId, user, room?.status]);
+
+  // Resolve activeCase from room.case_id
+  useEffect(() => {
+    if (!room?.case_id) return;
+    const found = CASES.find((c) => c.id === room.case_id);
+    if (found) setActiveCase(found);
+  }, [room?.case_id]);
 
   // Auto-advance from 'starting' to 'role_assignment' for host
   useEffect(() => {
@@ -468,18 +514,23 @@ export default function Room() {
   };
 
   const handleAdvanceToInvestigation = async () => {
-    setRoom((prev) => (prev ? { ...prev, status: 'investigation' } : prev));
-    broadcastRoomAction({ status: 'investigation' });
     try {
+      // set_phase_timer sets phase_started_at server-side (host only)
+      const { data: timerData } = await supabase.rpc('set_phase_timer', { p_room_id: roomId });
+      const phaseStarted = timerData || new Date().toISOString();
+
       const { error: rpcError } = await supabase.rpc('advance_room_status', {
         p_room_id: roomId,
         p_next_status: 'investigation',
       });
       if (rpcError) {
         console.error('[advance_room_status investigation]', rpcError);
+        return;
       }
+      setRoom((prev) => (prev ? { ...prev, status: 'investigation', phase_started_at: phaseStarted } : prev));
+      broadcastRoomAction({ status: 'investigation', phase_started_at: phaseStarted });
     } catch (err) {
-      console.error('[advance_room_status investigation exception]', err);
+      console.error('[handleAdvanceToInvestigation]', err);
     }
   };
 
@@ -666,17 +717,16 @@ export default function Room() {
   // — Interactive Investigation Handlers —
 
   const fetchInvestigationProgress = useCallback(async () => {
-    if (!roomId || !room?.current_round) return;
+    if (!roomId) return;
     try {
       const { data } = await supabase.rpc('get_investigation_progress', {
         p_room_id: roomId,
-        p_round_number: room.current_round,
       });
       if (data) setInvestigationProgress(data);
     } catch (err) {
       console.error('[get_investigation_progress]', err);
     }
-  }, [roomId, room?.current_round]);
+  }, [roomId]);
 
   const fetchPublicSuspectData = useCallback(async () => {
     if (!roomId || myRole === 'suspect') return;
@@ -713,11 +763,19 @@ export default function Room() {
       const timer = setTimeout(() => {
         fetchInvestigationProgress();
         fetchPublicSuspectData();
-        setInvestigationTimeLeft(300);
+        fetchSuspicionScores();
+        // Timer derived from room.phase_started_at (server timestamp)
+        if (room?.phase_started_at) {
+          const elapsed = (Date.now() - new Date(room.phase_started_at).getTime()) / 1000;
+          const remaining = Math.max(0, Math.floor(300 - elapsed));
+          setInvestigationTimeLeft(remaining);
+        } else {
+          setInvestigationTimeLeft(300);
+        }
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [room?.status, fetchInvestigationProgress, fetchPublicSuspectData]);
+  }, [room?.status, room?.phase_started_at, fetchInvestigationProgress, fetchPublicSuspectData, fetchSuspicionScores]);
 
   const handleAskQuestion = async () => {
     if (!newQuestionText.trim() || sendingQuestion) return;
@@ -765,7 +823,6 @@ export default function Room() {
     try {
       const { data } = await supabase.rpc('search_location', {
         p_room_id: roomId,
-        p_round_number: room?.current_round || 1,
         p_location_id: loc.id,
       });
       if (data) {
@@ -783,7 +840,6 @@ export default function Room() {
     try {
       const { data, error: rpcErr } = await supabase.rpc('solve_clue_puzzle', {
         p_room_id: roomId,
-        p_round_number: room?.current_round || 1,
         p_puzzle_id: puzzle.id,
         p_answer: puzzleAnswerInput.trim(),
       });
@@ -814,10 +870,7 @@ export default function Room() {
     try {
       const { data } = await supabase.rpc('create_clue_connection', {
         p_room_id: roomId,
-        p_round_number: room?.current_round || 1,
         p_connection_id: connection.id,
-        p_clue1_id: clue1Id,
-        p_clue2_id: clue2Id,
       });
       if (data) {
         setInvestigationProgress(data);
@@ -835,10 +888,7 @@ export default function Room() {
     try {
       const { data } = await supabase.rpc('record_contradiction', {
         p_room_id: roomId,
-        p_round_number: room?.current_round || 1,
         p_contradiction_id: contradiction.id,
-        p_suspect_id: contradiction.suspect_id,
-        p_description: contradiction.description,
       });
       if (data) {
         setInvestigationProgress(data);
@@ -1035,8 +1085,12 @@ export default function Room() {
             <ObjectionBuzzer
               players={players}
               currentUserId={user?.id}
+              roomId={roomId}
               onBuzzerTriggered={handleTriggerObjection}
               activeBuzzerState={activeBuzzerState}
+              objectionStartedAt={objectionStartedAt}
+              suspicionScores={suspicionScores}
+              onAdjustSuspicion={handleAdjustSuspicion}
               onCloseBuzzer={handleCloseObjection}
             />
 
@@ -1045,8 +1099,11 @@ export default function Room() {
               <UndercoverMode
                 caseData={activeCase}
                 myRole={myRole}
+                mySecretWord={mySecretWord}
                 players={players}
                 currentUserId={user?.id}
+                roomId={roomId}
+                phaseStartedAt={room?.phase_started_at}
                 onBuzzerTrigger={handleTriggerObjection}
               />
             ) : myRole === 'suspect' ? (

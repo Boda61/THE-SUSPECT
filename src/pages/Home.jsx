@@ -50,12 +50,40 @@ export default function Home() {
     return Array.from(array, (byte) => chars[byte % chars.length]).join('');
   };
 
+  const ensureProfileForRoom = async () => {
+    if (!user) return;
+
+    const candidateName = profile?.username || user?.email?.split('@')[0] || 'محقق';
+    const { data: existingProfile, error: lookupError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (lookupError && lookupError.code !== 'PGRST116') {
+      throw new Error(`profile lookup failed: ${lookupError.message}`);
+    }
+
+    if (!existingProfile) {
+      const { error: insertError } = await supabase.from('profiles').upsert({
+        id: user.id,
+        username: candidateName,
+      }, { onConflict: 'id' });
+
+      if (insertError) {
+        throw new Error(`profile creation failed: ${insertError.message}`);
+      }
+    }
+  };
+
   const handleCreateRoom = async () => {
     if (createLoading) return;
     setCreateError(null);
     setCreateLoading(true);
 
     try {
+      await ensureProfileForRoom();
+
       const code = generateCode();
       const displayName = profile?.username || user?.email?.split('@')[0] || 'محقق';
 
@@ -65,13 +93,25 @@ export default function Home() {
       });
 
       if (rpcError) {
-        setCreateError('تعذّر إنشاء الغرفة. حاول مرة أخرى.');
+        const friendlyMessages = {
+          'Not authenticated': 'يرجى تسجيل الدخول مرة أخرى قبل إنشاء غرفة.',
+          'Room not found': 'لم يتم العثور على الغرفة المطلوبة.',
+          'profile': 'تعذّر إنشاء حساب المستخدم داخل اللعبة. حاول تسجيل الخروج ثم الدخول مرة أخرى.',
+        };
+
+        const match = Object.keys(friendlyMessages).find((key) =>
+          rpcError.message?.includes(key)
+        );
+
+        setCreateError(match ? friendlyMessages[match] : 'تعذّر إنشاء الغرفة. تأكد من تشغيل migrations لـ Supabase أو أن الحساب مسجل بشكل صحيح.');
         console.error('[create_room]', rpcError);
       } else if (roomId) {
         navigate(`/room/${roomId}`);
       }
     } catch (err) {
-      setCreateError('حدث خطأ غير متوقع. حاول مرة أخرى.');
+      setCreateError(err?.message?.includes('profile')
+        ? 'تعذّر إنشاء ملف المستخدم. حاول تسجيل الخروج ثم الدخول مرة أخرى.'
+        : 'حدث خطأ غير متوقع. تأكد من أن قاعدة البيانات جاهزة ومشغلة.');
       console.error('[create_room exception]', err);
     } finally {
       setCreateLoading(false);

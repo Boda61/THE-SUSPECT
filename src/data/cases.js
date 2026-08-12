@@ -1,8 +1,8 @@
-﻿export const CASES = [
+﻿// SECURITY: secret_word and undercover_word have been removed from the client bundle.
+// They are stored server-side in the case_secrets table and served via get_my_secret_word RPC.
+export const CASES = [
   {
     id: 'case-coffee',
-    secret_word: 'القهوة',
-    undercover_word: 'الشاي',
     undercover_hints: [
       'شيء بيتشرب دايماً الصبح أو بعد الأكل',
       'مرتبط بالمزاج والقعدة مع أصحابك',
@@ -33,8 +33,7 @@
       {
         id: 'puz-1',
         title: 'شفرة المطبخ السرية',
-        hint: 'ده الشيء اللي بيحوّل الماء العادي لـ magic... اسمه في كلمة واحدة بالعربي (كلمة القضية نفسها)',
-        answer: 'القهوة'
+        hint: 'ده الشيء اللي بيحوّل الماء العادي لـ magic... اسمه في كلمة واحدة بالعربي (كلمة القضية نفسها)'
       }
     ],
     connections: [
@@ -59,8 +58,6 @@
   },
   {
     id: 'case-phone',
-    secret_word: 'الموبايل',
-    undercover_word: 'التلفزيون',
     undercover_hints: [
       'شاشة بنقضي قدامها ساعات طويلة يومياً',
       'بنعرف منه الأخبار وبنتفرج فيه على حاجات تسلينا',
@@ -91,8 +88,7 @@
       {
         id: 'puz-phone-1',
         title: 'رمز القفل السري',
-        hint: 'اسم الجهاز الصغير اللي في إيدك بالعربي (كلمة القضية)',
-        answer: 'الموبايل'
+        hint: 'اسم الجهاز الصغير اللي في إيدك بالعربي (كلمة القضية)'
       }
     ],
     connections: [
@@ -115,8 +111,6 @@
   },
   {
     id: 'case-microbus',
-    secret_word: 'المواصلات العامة',
-    undercover_word: 'أوبر والتاكسي',
     undercover_hints: [
       'طريقة بنتحرك بيها في شوارع مصر من مكان لمكان',
       'بيدفع فيها فلوس وساعات بنستنى أو بنركب مع ناس ثانية',
@@ -151,8 +145,6 @@
   },
   {
     id: 'case-summer',
-    secret_word: 'الساحل والصيف',
-    undercover_word: 'رأس البر والجمصة',
     undercover_hints: [
       'سفرية بنسافرها في الحر عشان نبل بطننا في المية',
       'مرتبطة بالصحاب والشواطئ والأكل الشارع',
@@ -185,8 +177,6 @@
   },
   {
     id: 'case-koshary',
-    secret_word: 'الكشري',
-    undercover_word: 'الفتة والمحشي',
     undercover_hints: [
       'أكلة شعبية مصرية أصلية كل الناس بتحبها',
       'مرتبطة بالصلصة، الدقة، والبصل المقرمش',
@@ -209,8 +199,6 @@
   },
   {
     id: 'case-derby',
-    secret_word: 'مباراة القمة والديربي',
-    undercover_word: 'مباراة المنتخب والدوري',
     undercover_hints: [
       'حدث كروي ناري بيجمع بين غريمين تقليديين في مصر',
       'الشارع والقهاوي بتتقسم نصين أحمر وأبيض',

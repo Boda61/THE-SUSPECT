@@ -3,37 +3,38 @@ import { useState, useEffect } from 'react';
 export default function ObjectionBuzzer({
   players,
   currentUserId,
+  roomId,
   onBuzzerTriggered,
   activeBuzzerState,
+  objectionStartedAt,
+  suspicionScores,
+  onAdjustSuspicion,
   onCloseBuzzer
 }) {
-  const [suspicionScores, setSuspicionScores] = useState({});
   const [objectionTimeLeft, setObjectionTimeLeft] = useState(20);
 
+  // Server-authoritative 20s confrontation timer
   useEffect(() => {
     if (!activeBuzzerState) return;
-    setObjectionTimeLeft(20);
+
+    const calcRemaining = () => {
+      if (!objectionStartedAt) return 20;
+      const elapsed = (Date.now() - new Date(objectionStartedAt).getTime()) / 1000;
+      return Math.max(0, Math.floor(20 - elapsed));
+    };
+
+    setObjectionTimeLeft(calcRemaining());
     const timer = setInterval(() => {
-      setObjectionTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          onCloseBuzzer && onCloseBuzzer();
-          return 0;
-        }
-        return prev - 1;
-      });
+      const remaining = calcRemaining();
+      setObjectionTimeLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(timer);
+        onCloseBuzzer && onCloseBuzzer();
+      }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [activeBuzzerState, onCloseBuzzer]);
-
-  const handleAdjustSuspicion = (userId, delta) => {
-    setSuspicionScores((prev) => {
-      const current = prev[userId] || 50;
-      const next = Math.max(0, Math.min(100, current + delta));
-      return { ...prev, [userId]: next };
-    });
-  };
+  }, [activeBuzzerState, objectionStartedAt, onCloseBuzzer]);
 
   return (
     <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
@@ -105,13 +106,13 @@ export default function ObjectionBuzzer({
               {!isSelf && (
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <button
-                    onClick={() => handleAdjustSuspicion(p.user_id, -10)}
+                    onClick={() => onAdjustSuspicion && onAdjustSuspicion(p.user_id, -10)}
                     className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 py-1 rounded-lg text-[11px] font-bold transition"
                   >
                     مضمون 🟢 (-10%)
                   </button>
                   <button
-                    onClick={() => handleAdjustSuspicion(p.user_id, +10)}
+                    onClick={() => onAdjustSuspicion && onAdjustSuspicion(p.user_id, +10)}
                     className="flex-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 py-1 rounded-lg text-[11px] font-bold transition"
                   >
                     مشبوه 🔴 (+10%)

@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
 import { ACTION_CARDS } from '../data/cases';
+import { supabase } from '../lib/supabase';
 import { playTimerTickSound, playVictorySound } from '../utils/soundEffects';
 
 export default function UndercoverMode({
   caseData,
   myRole,
+  mySecretWord,
   players,
   currentUserId,
+  roomId,
+  phaseStartedAt,
   onBuzzerTrigger,
   onFinalGuessSubmit
 }) {
@@ -19,20 +23,39 @@ export default function UndercoverMode({
   const [showEscapeModal, setShowEscapeModal] = useState(false);
   const [escapeInput, setEscapeInput] = useState('');
   const [escapeResult, setEscapeResult] = useState(null);
+  const [submittingEscape, setSubmittingEscape] = useState(false);
 
   const isSuspect = myRole === 'suspect';
-  const mySecretWord = isSuspect ? caseData?.undercover_word || 'غير معروف (حاول التمويه!)' : caseData?.secret_word;
   const currentPitchPlayer = players[pitchIndex % (players.length || 1)];
 
-  // Timer countdown for quick pitch
+  // Pitch timer: derived from phaseStartedAt (server timestamp) per-turn
+  // Each turn is 30s. We track pitchIndex to know which 30s window we're in.
   useEffect(() => {
-    if (timerSeconds <= 0) return;
+    if (!phaseStartedAt) {
+      // Fallback: local countdown if no server timestamp
+      if (timerSeconds <= 0) return;
+      const interval = setInterval(() => {
+        setTimerSeconds((prev) => {
+          if (prev <= 5) playTimerTickSound();
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+    // Calculate remaining seconds for current pitch turn
+    const calcRemaining = () => {
+      const elapsed = (Date.now() - new Date(phaseStartedAt).getTime()) / 1000;
+      const turnElapsed = elapsed % 30;
+      return Math.max(0, Math.floor(30 - turnElapsed));
+    };
+    setTimerSeconds(calcRemaining());
     const interval = setInterval(() => {
-      setTimerSeconds((prev) => prev - 1);
-      if (timerSeconds <= 5) playTimerTickSound();
+      const remaining = calcRemaining();
+      if (remaining <= 5) playTimerTickSound();
+      setTimerSeconds(remaining);
     }, 1000);
     return () => clearInterval(interval);
-  }, [timerSeconds]);
+  }, [phaseStartedAt, pitchIndex]);
 
   const handleNextPitch = () => {
     setPitchIndex((prev) => prev + 1);
@@ -44,13 +67,31 @@ export default function UndercoverMode({
     setActiveActionModal(card);
   };
 
-  const handleEscapeGuess = () => {
-    if (!escapeInput.trim()) return;
-    const cleanGuess = escapeInput.trim();
-    const isCorrect = cleanGuess === caseData?.secret_word;
-    if (isCorrect) playVictorySound();
-    setEscapeResult(isCorrect ? 'نجحت في الهروب! 🎉 تخمينك صحيح 100%' : 'فشلت محاولة الهروب! ❌ التخمين غير صحيح');
-    onFinalGuessSubmit && onFinalGuessSubmit(cleanGuess, isCorrect);
+  const handleEscapeGuess = async () => {
+    if (!escapeInput.trim() || submittingEscape) return;
+    setSubmittingEscape(true);
+    try {
+      const { data, error } = await supabase.rpc('submit_final_escape_guess', {
+        p_room_id: roomId,
+        p_guess: escapeInput.trim(),
+      });
+      if (error) {
+        setEscapeResult(`❌ ${error.message}`);
+        return;
+      }
+      const isCorrect = data?.is_correct === true;
+      if (isCorrect) playVictorySound();
+      setEscapeResult(
+        isCorrect
+          ? 'نجحت في الهروب! 🎉 تخمينك صحيح 100%'
+          : 'فشلت محاولة الهروب! ❌ التخمين غير صحيح'
+      );
+      onFinalGuessSubmit && onFinalGuessSubmit(isCorrect);
+    } catch (err) {
+      setEscapeResult('❌ حدث خطأ. حاول مرة أخرى.');
+    } finally {
+      setSubmittingEscape(false);
+    }
   };
 
   return (
@@ -303,9 +344,10 @@ export default function UndercoverMode({
             <div className="flex gap-2">
               <button
                 onClick={handleEscapeGuess}
-                className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-2.5 rounded-xl text-xs transition"
+                disabled={submittingEscape || !!escapeResult}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-2.5 rounded-xl text-xs transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                تقديم التخمين والهروب 🔓
+                {submittingEscape ? 'جاري التحقق...' : 'تقديم التخمين والهروب 🔓'}
               </button>
               <button
                 onClick={() => setShowEscapeModal(false)}
